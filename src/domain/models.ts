@@ -1,0 +1,15 @@
+export type UserProfile = {
+  name: string;
+  email: string;
+  householdId: string;
+};
+
+export type Task = {
+  id: string;
+  title: string;
+  userId: string;
+  userName?: string;
+  householdId: string;
+  status?: 'done' | 'pending';
+  createdAt?: import('firebase/firestore').Timestamp;
+};
