@@ -91,7 +91,7 @@ service cloud.firestore {
 
 6) デフォルトタスク自動生成（任意: 公開版では推奨）
 - Firebase Functions を用意（別リポジトリ/フォルダ可）
-  - `default_tasks/{householdId}` を参照し、当日分を `tasks` に生成
+  - `default_tasks/{householdId}/items` を参照し、当日分を `tasks` に生成
 - Cloud Scheduler を設定（毎日 05:00 JST など）
   - HTTP/Callable で Functions を起動（認証はIAM/App Check等）
 - データモデル: `default_tasks` は以下を想定
@@ -115,7 +115,18 @@ service cloud.firestore {
 ## データモデル（抜粋）
 - `users/{userId}`: `name`, `email`, `householdId`
 - `tasks/{taskId}`: `title`, `userId`, `householdId`, `createdAt`, `dateKey`, `status`, `reactions?`, `completedAt?`, `completedByUserId?`, `completedByName?`
-- `default_tasks/{householdId}/{docId}`: `title`, `daysOfWeek:number[]`, `order?:number`
+- `default_tasks/{householdId}/items/{docId}`: `title`, `daysOfWeek:number[]`, `order?:number`
+
+## Functions（雛形）
+- 本リポジトリ `functions/` に雛形を同梱
+  - `functions/src/index.ts`: 05:00 JSTに `default_tasks` から当日分を `tasks` へ生成
+  - 手順（例）
+    1. Firebase CLI をセットアップ（ローカル）
+    2. `cd functions && npm install`
+    3. `npm run build`
+    4. `firebase deploy --only functions`（または `npm run deploy`）
+    5. 生成の手動テスト: `generateDailyTasksHttp` をHTTPで叩く（必要に応じて保護）
+  - Cloud Scheduler（Console）で 05:00 JST にトリガー
 
 Firestore セキュリティルールは最小権限で運用してください。クライアントのみの公開リポジトリにはルールは含みません。
 

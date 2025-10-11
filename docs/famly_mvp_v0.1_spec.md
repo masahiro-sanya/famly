@@ -52,7 +52,7 @@
   - completedByName?
 
 # デフォルトタスク（v0.1で運用開始）
-/default_tasks/{householdId}/{docId}
+/default_tasks/{householdId}/items/{docId}
   - title
   - daysOfWeek: [0-6]        # 0=Sun ... 6=Sat
   - order?: number           # 任意の並び順

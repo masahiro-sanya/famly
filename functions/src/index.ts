@@ -1,0 +1,89 @@
+import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
+
+try { admin.initializeApp(); } catch {}
+const db = admin.firestore();
+
+function todayKeyJST(d = new Date()): string {
+  // Convert current time to Asia/Tokyo without external libs
+  const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
+  const y = jst.getUTCFullYear();
+  const m = String(jst.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(jst.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function todayWeekdayJST(d = new Date()): number {
+  const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
+  return jst.getUTCDay(); // 0=Sun ... 6=Sat
+}
+
+async function generateForHousehold(householdId: string) {
+  const dateKey = todayKeyJST();
+  const dow = todayWeekdayJST();
+  const defaultsSnap = await db
+    .collection('default_tasks')
+    .doc(householdId)
+    .collection('items')
+    .where('daysOfWeek', 'array-contains', dow)
+    .get();
+
+  for (const docSnap of defaultsSnap.docs) {
+    const def = docSnap.data() as { title: string };
+    const title = (def.title || '').trim();
+    if (!title) continue;
+
+    // Duplication guard: householdId + dateKey + title
+    const exists = await db
+      .collection('tasks')
+      .where('householdId', '==', householdId)
+      .where('dateKey', '==', dateKey)
+      .where('title', '==', title)
+      .limit(1)
+      .get();
+    if (!exists.empty) continue;
+
+    await db.collection('tasks').add({
+      title,
+      householdId,
+      userId: 'system',
+      status: 'pending',
+      dateKey,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      reactions: {},
+    });
+  }
+}
+
+export const generateDailyTasks = functions
+  .region('asia-northeast1')
+  .pubsub.schedule('0 5 * * *')
+  .timeZone('Asia/Tokyo')
+  .onRun(async () => {
+    const householdsSnap = await db.collection('default_tasks').get();
+    const tasks: Promise<any>[] = [];
+    householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
+    await Promise.all(tasks);
+  });
+
+// Manual trigger for testing (secure appropriately in production)
+export const generateDailyTasksHttp = functions
+  .region('asia-northeast1')
+  .https.onRequest(async (req, res) => {
+    const householdId = req.query.householdId as string | undefined;
+    try {
+      if (householdId) {
+        await generateForHousehold(householdId);
+      } else {
+        const householdsSnap = await db.collection('default_tasks').get();
+        const tasks: Promise<any>[] = [];
+        householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
+        await Promise.all(tasks);
+      }
+      res.status(200).send({ ok: true, dateKey: todayKeyJST() });
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).send({ ok: false, error: e?.message });
+    }
+  });
+

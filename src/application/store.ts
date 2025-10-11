@@ -1,6 +1,6 @@
 import create from 'zustand';
 
-type Tab = 'tasks' | 'profile' | 'settings';
+type Tab = 'tasks' | 'defaults' | 'profile' | 'settings';
 
 type UIState = {
   tab: Tab;
@@ -15,4 +15,3 @@ export const useUIStore = create<UIState>((set) => ({
   setTab: (tab) => set({ tab }),
   setEditingTask: (isEditingTask) => set({ isEditingTask }),
 }));
-
