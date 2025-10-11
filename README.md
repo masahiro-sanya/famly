@@ -5,6 +5,8 @@
 - 認証: Firebase Auth（メール/パスワード）
 - 記録/履歴: Firestore に「やった」タスクを保存・一覧表示
 - 編集/削除: 既存タスクのタイトル編集と削除
+- 完了チェック: done/pending をトグル
+- リアクション: 🙏/👍/🎉/❤️ で反応（1人1タスク1種類1回）
 - 共有: `householdId` 単位で履歴共有（初期値はユーザーID）
 - 最小UI: React Native 標準コンポーネントで実装（Paper導入は任意）
 
@@ -15,6 +17,15 @@
 2) 依存関係をインストール
 ```
 npm install
+```
+
+2.1) UI/状態管理（任意だが推奨）
+```
+# Paper（Expo環境での推奨インストール）
+npx expo install react-native-paper react-native-safe-area-context react-native-gesture-handler react-native-reanimated react-native-vector-icons
+
+# Zustand（状態管理）
+npm i zustand
 ```
 
 3) Firebase 設定（秘密情報はコミットしない）
@@ -72,10 +83,21 @@ service cloud.firestore {
 5) 複合インデックスを作成（tasks 用）
 - Firestore → インデックス → 複合 → 追加
 - コレクション: `tasks`
-- フィールド: `householdId`（昇順/==）→ `createdAt`（降順）
+- フィールド:
+  - `householdId`（昇順/==）
+  - `dateKey`（昇順/==）
+  - `createdAt`（降順）
 - ステータスが「有効」になるまで 1–3 分待機（エラーメッセージのリンクから作成でもOK）
 
-6) 起動と確認
+6) デフォルトタスク自動生成（任意: 公開版では推奨）
+- Firebase Functions を用意（別リポジトリ/フォルダ可）
+  - `default_tasks/{householdId}` を参照し、当日分を `tasks` に生成
+- Cloud Scheduler を設定（毎日 05:00 JST など）
+  - HTTP/Callable で Functions を起動（認証はIAM/App Check等）
+- データモデル: `default_tasks` は以下を想定
+  - `title: string`, `daysOfWeek: number[]`, `order?: number`
+
+7) 起動と確認
 - `npx expo start -c`
 - Expo Go でログイン→タスクを追加・編集・削除できることを確認
 
@@ -83,14 +105,17 @@ service cloud.firestore {
 ## 使い方（現状）
 - 未ログイン時: メール/パスワードでログイン or 新規登録
 - ログイン後: 画面上部のタブで操作
-  - タスク: 入力欄は画面下部に固定。「やったこと」を入力して記録、下に履歴が表示（作成者名を表示）
+  - タスク: 入力欄は画面下部に固定。「やったこと」を入力して記録、下に履歴が表示（完了時のみ完了者名を表示）。
     - 各行の「編集」でタイトル変更、「削除」で削除
+    - 「完了/未完了」でステータス切替
+    - 反応: 既に付いたチップ（🙏/👍/🎉/❤️）のみ表示。なければ「＋」を押して選択→追加
   - プロフィール: 名前を編集して保存
   - 設定: `householdId` を変更、ログアウト
 
 ## データモデル（抜粋）
 - `users/{userId}`: `name`, `email`, `householdId`
-- `tasks/{taskId}`: `title`, `userId`, `householdId`, `createdAt`, `status`
+- `tasks/{taskId}`: `title`, `userId`, `householdId`, `createdAt`, `dateKey`, `status`, `reactions?`, `completedAt?`, `completedByUserId?`, `completedByName?`
+- `default_tasks/{householdId}/{docId}`: `title`, `daysOfWeek:number[]`, `order?:number`
 
 Firestore セキュリティルールは最小権限で運用してください。クライアントのみの公開リポジトリにはルールは含みません。
 
@@ -100,6 +125,8 @@ Firestore セキュリティルールは最小権限で運用してください�
   - `src/application/`: ユースケース/フック（`auth.ts`, `tasks.ts`）
   - `src/infrastructure/`: Firebase クライアント（`firebaseClient.ts`）
   - `src/presentation/`: UIコンポーネント/画面（`AppRoot.tsx`, `components/*`）
+- UI ライブラリ: React Native Paper（`AppRoot.tsx` を `PaperProvider` でラップ）
+- 状態管理: Zustand（`src/application/store.ts` の UI ストア）
 - ルートの `App.tsx` は薄いラッパーで `src/presentation/AppRoot` を描画
 - UI: 依存追加を避け標準コンポーネントで構成（Paper導入は任意）
 - 型: TypeScript strict

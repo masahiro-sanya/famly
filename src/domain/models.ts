@@ -12,4 +12,10 @@ export type Task = {
   householdId: string;
   status?: 'done' | 'pending';
   createdAt?: import('firebase/firestore').Timestamp;
+  dateKey?: string;
+  thanksCount?: number;
+  reactions?: Record<string, number>;
+  completedAt?: import('firebase/firestore').Timestamp;
+  completedByUserId?: string;
+  completedByName?: string;
 };

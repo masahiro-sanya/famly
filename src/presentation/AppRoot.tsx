@@ -1,44 +1,52 @@
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthState, signOut, updateHouseholdId, updateProfileName } from '../application/auth';
-import { addTask, useTasks, updateTaskTitle, deleteTask } from '../application/tasks';
+import { addTask, useTasks, updateTaskTitle, deleteTask, updateTaskStatus, addThanksStamp, addReaction } from '../application/tasks';
 import { AuthForm } from './components/AuthForm';
 import { TasksView } from './components/TasksView';
 import { ProfileView } from './components/ProfileView';
 import { SettingsView } from './components/SettingsView';
 import { TabButton } from './components/TabButton';
 import { InputBar } from './components/InputBar';
+import { useUIStore } from '../application/store';
+import { Provider as PaperProvider } from 'react-native-paper';
 
 export default function AppRoot() {
   const { user, profile } = useAuthState();
   const tasks = useTasks(profile?.householdId);
-  const [tab, setTab] = useState<'tasks' | 'profile' | 'settings'>('tasks');
-  const [isEditingTask, setIsEditingTask] = useState(false);
+  const tab = useUIStore((s: any) => s.tab);
+  const setTab = useUIStore((s: any) => s.setTab);
+  const isEditingTask = useUIStore((s: any) => s.isEditingTask);
+  const setIsEditingTask = useUIStore((s: any) => s.setEditingTask);
 
   if (!user) {
     return (
+      <PaperProvider>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={24}
+        >
+          <SafeAreaView style={styles.container}>
+            <Text style={styles.title}>Famly</Text>
+            <AuthForm />
+            <StatusBar style="auto" />
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </PaperProvider>
+    );
+  }
+
+  return (
+    <PaperProvider>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={24}
       >
         <SafeAreaView style={styles.container}>
-          <Text style={styles.title}>Famly</Text>
-          <AuthForm />
-          <StatusBar style="auto" />
-        </SafeAreaView>
-      </KeyboardAvoidingView>
-    );
-  }
-
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={24}
-    >
-      <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Famly</Text>
       <View style={styles.tabs}>
         <TabButton label="タスク" active={tab === 'tasks'} onPress={() => setTab('tasks')} />
@@ -53,16 +61,21 @@ export default function AppRoot() {
           onUpdate={(id, newTitle) => updateTaskTitle(id, newTitle)}
           onDelete={(id) => deleteTask(id)}
           onEditingChange={setIsEditingTask}
+          onToggleStatus={(id, next) =>
+            updateTaskStatus(id, next, {
+              id: user.uid,
+              name: profile?.name ?? (user.email?.split('@')[0] ?? 'Unknown'),
+            })}
+          onThanks={(id) => addThanksStamp(id, user.uid)}
+          onReact={(id, type) => addReaction(id, user.uid, type)}
         />
       )}
       {tab === 'tasks' && !isEditingTask && (
         <InputBar
           onSubmit={async (title) => {
-            const fallbackName = user.email?.split('@')[0] ?? 'Unknown';
             await addTask({
               title,
               userId: user.uid,
-              userName: profile?.name ?? fallbackName,
               householdId: profile?.householdId ?? user.uid,
             });
           }}
@@ -84,6 +97,7 @@ export default function AppRoot() {
       <StatusBar style="auto" />
     </SafeAreaView>
     </KeyboardAvoidingView>
+    </PaperProvider>
   );
 }
 
