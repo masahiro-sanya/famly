@@ -1,9 +1,11 @@
+// デフォルトタスク（テンプレ）の一覧/編集ビュー。
 import React, { useMemo, useState } from 'react';
 import { Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity } from 'react-native';
 import { DefaultTask } from '../../domain/models';
 
 const dayLabels = ['日','月','火','水','木','金','土'];
 
+/** household単位のテンプレを編集するシンプルな画面 */
 export function DefaultTasksView({
   items,
   onAdd,
@@ -103,4 +105,3 @@ const styles = StyleSheet.create({
   dayTextActive: { color: '#2453ff', fontWeight: '600' },
   muted: { color: '#888' },
 });
-

@@ -128,6 +128,46 @@ service cloud.firestore {
     5. 生成の手動テスト: `generateDailyTasksHttp` をHTTPで叩く（必要に応じて保護）
   - Cloud Scheduler（Console）で 05:00 JST にトリガー
 
+## Functions デプロイ手順（詳細）
+
+前提: Functions(Gen2) と Cloud Scheduler は Blaze プランが必要です。まず対象プロジェクトを Blaze にアップグレードしてください（Console → 課金 → プラン）。
+
+1) Firebase CLI セットアップ/ログイン
+- インストール（未導入時）: `npm i -g firebase-tools`
+- ログイン: `firebase login`
+- アカウント切替（必要なら）: `firebase login:list` → `firebase login:use <email>`
+
+2) デプロイ先プロジェクトの選択
+- ルートで `.firebaserc` を設定（本リポジトリは dev を default に設定済み）
+- 明示切替: `firebase use dev` または `firebase use prod`
+
+3) デプロイ（dev の例）
+```
+cd functions
+npm install
+npm run build
+# .firebaserc の default が dev の場合は --project 省略可
+firebase deploy --only functions --config ../firebase.json --project famly-dev-41b50
+```
+- prod の例: `--project famly-68b56`
+
+4) 動作確認
+- Console → Functions でデプロイ完了を確認
+- HTTPテスト（手動生成）
+  - デプロイ後に表示される `generateDailyTasksHttp` のURLにアクセス
+  - householdId を指定して単体確認: `...?householdId=<YOUR_HOUSEHOLD_ID>`
+
+5) スケジュール（自動生成）
+- コード内の `pubsub.schedule('0 5 * * *').timeZone('Asia/Tokyo')` により、05:00 JST に Cloud Scheduler ジョブが作成されます
+- エラー時は Console の Cloud Scheduler/Cloud Logs を確認
+
+6) コスト最適化のヒント
+- Artifact Registry のクリーンアップポリシーを設定
+  - 例: 「未タグのイメージは1日で削除」「最新3個のみ保持」
+- Functions は `minInstances=0`（デフォルト）で常駐コストゼロ
+- ログを最小限に（大量の info ログを避ける）
+- 単一リージョン `asia-northeast1` に統一
+
 Firestore セキュリティルールは最小権限で運用してください。クライアントのみの公開リポジトリにはルールは含みません。
 
 ## 開発メモ / アーキテクチャ

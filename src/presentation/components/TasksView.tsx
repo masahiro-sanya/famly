@@ -1,7 +1,13 @@
+// タスク一覧。編集/削除/完了トグルと、Slack風リアクションを提供。
 import React, { useMemo, useState } from 'react';
 import { Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { Task } from '../../domain/models';
 
+/**
+ * タスク一覧ビュー。
+ * - onToggleStatus: 完了/未完了トグル
+ * - onThanks/onReact: リアクションのトグル追加/削除
+ */
 export function TasksView({
   currentUserId,
   tasks,

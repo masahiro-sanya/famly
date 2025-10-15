@@ -1,3 +1,4 @@
+// 認証状態とプロフィール(users/{uid})の購読・更新。
 import { useEffect, useState } from 'react';
 import { auth, db } from '../infrastructure/firebaseClient';
 import {
@@ -10,6 +11,10 @@ import {
 import { UserProfile } from '../domain/models';
 import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 
+/**
+ * Firebase Auth のログイン状態と、対応する users/{uid} を購読する。
+ * 初回ログイン時は users/{uid} をデフォルト値で作成する。
+ */
 export function useAuthState() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -65,6 +70,7 @@ export async function updateHouseholdId(userId: string, householdId: string) {
   await updateDoc(doc(db, 'users', userId), { householdId });
 }
 
+// Firestore: ドキュメントがなければ set、あれば update。
 async function updateDocOrSet(ref: ReturnType<typeof doc>, data: Record<string, any>) {
   const snap = await getDoc(ref);
   if (snap.exists()) {
@@ -74,4 +80,3 @@ async function updateDocOrSet(ref: ReturnType<typeof doc>, data: Record<string, 
     await setDoc(ref, data);
   }
 }
-

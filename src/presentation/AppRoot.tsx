@@ -1,3 +1,4 @@
+// アプリのルート。タブ切替・大域UIをまとめる薄いコンテナ。
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';

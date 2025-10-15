@@ -1,3 +1,4 @@
+// UI用の極小Zustandストア（タブ状態/編集中フラグのみ）。
 import create from 'zustand';
 
 type Tab = 'tasks' | 'defaults' | 'profile' | 'settings';

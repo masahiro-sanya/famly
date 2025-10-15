@@ -1,9 +1,11 @@
+// default_tasks から当日分の tasks を生成するCloud Functions。
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
 try { admin.initializeApp(); } catch {}
 const db = admin.firestore();
 
+/** JSTの当日キー(YYYY-MM-DD) */
 function todayKeyJST(d = new Date()): string {
   // Convert current time to Asia/Tokyo without external libs
   const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
@@ -13,11 +15,13 @@ function todayKeyJST(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+/** JSTの曜日(0=日 ... 6=土) */
 function todayWeekdayJST(d = new Date()): number {
   const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
   return jst.getUTCDay(); // 0=Sun ... 6=Sat
 }
 
+/** 指定householdのテンプレから当日分をtasksへ生成（重複防止つき） */
 async function generateForHousehold(householdId: string) {
   const dateKey = todayKeyJST();
   const dow = todayWeekdayJST();
@@ -55,6 +59,7 @@ async function generateForHousehold(householdId: string) {
   }
 }
 
+// Pub/Subスケジュール: JST 05:00 に全householdを走査
 export const generateDailyTasks = functions
   .region('asia-northeast1')
   .pubsub.schedule('0 5 * * *')
@@ -67,6 +72,7 @@ export const generateDailyTasks = functions
   });
 
 // Manual trigger for testing (secure appropriately in production)
+// 手動HTTPトリガ（検証用途）。本番は認証等で保護すること。
 export const generateDailyTasksHttp = functions
   .region('asia-northeast1')
   .https.onRequest(async (req, res) => {
@@ -86,4 +92,3 @@ export const generateDailyTasksHttp = functions
       res.status(500).send({ ok: false, error: e?.message });
     }
   });
-

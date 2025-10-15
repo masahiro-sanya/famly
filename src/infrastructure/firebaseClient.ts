@@ -1,4 +1,6 @@
 import { initializeApp } from 'firebase/app';
+// Firebaseクライアント初期化。
+// FirestoreはRN環境でのネットワーク相性改善のためlong polling自動判定を有効化。
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
 
