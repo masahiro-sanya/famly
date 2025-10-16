@@ -34,13 +34,17 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateDailyTasksHttp = exports.generateDailyTasks = void 0;
-const functions = __importStar(require("firebase-functions"));
+// default_tasks から当日分の tasks を生成する Cloud Functions (2nd Gen, Node.js 20)。
+const scheduler_1 = require("firebase-functions/v2/scheduler");
+const https_1 = require("firebase-functions/v2/https");
+const logger = __importStar(require("firebase-functions/logger"));
 const admin = __importStar(require("firebase-admin"));
 try {
     admin.initializeApp();
 }
 catch { }
 const db = admin.firestore();
+/** JSTの当日キー(YYYY-MM-DD) */
 function todayKeyJST(d = new Date()) {
     // Convert current time to Asia/Tokyo without external libs
     const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
@@ -49,10 +53,12 @@ function todayKeyJST(d = new Date()) {
     const day = String(jst.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
 }
+/** JSTの曜日(0=日 ... 6=土) */
 function todayWeekdayJST(d = new Date()) {
     const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
     return jst.getUTCDay(); // 0=Sun ... 6=Sat
 }
+/** 指定householdのテンプレから当日分をtasksへ生成（重複防止つき） */
 async function generateForHousehold(householdId) {
     const dateKey = todayKeyJST();
     const dow = todayWeekdayJST();
@@ -88,21 +94,22 @@ async function generateForHousehold(householdId) {
         });
     }
 }
-exports.generateDailyTasks = functions
-    .region('asia-northeast1')
-    .pubsub.schedule('0 5 * * *')
-    .timeZone('Asia/Tokyo')
-    .onRun(async () => {
+// Pub/Subスケジュール: JST 05:00 に全householdを走査
+exports.generateDailyTasks = (0, scheduler_1.onSchedule)({
+    schedule: '0 5 * * *',
+    timeZone: 'Asia/Tokyo',
+    region: 'asia-northeast1',
+}, async () => {
     const householdsSnap = await db.collection('default_tasks').get();
     const tasks = [];
     householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
     await Promise.all(tasks);
+    logger.info('Daily tasks generated', { count: householdsSnap.size });
 });
 // Manual trigger for testing (secure appropriately in production)
-exports.generateDailyTasksHttp = functions
-    .region('asia-northeast1')
-    .https.onRequest(async (req, res) => {
-    const householdId = req.query.householdId;
+// 手動HTTPトリガ（検証用途）。本番は認証等で保護すること。
+exports.generateDailyTasksHttp = (0, https_1.onRequest)({ region: 'asia-northeast1' }, async (req, res) => {
+    const householdId = req.query.householdId || undefined;
     try {
         if (householdId) {
             await generateForHousehold(householdId);
@@ -113,10 +120,10 @@ exports.generateDailyTasksHttp = functions
             householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
             await Promise.all(tasks);
         }
-        res.status(200).send({ ok: true, dateKey: todayKeyJST() });
+        res.status(200).json({ ok: true, dateKey: todayKeyJST() });
     }
     catch (e) {
-        console.error(e);
-        res.status(500).send({ ok: false, error: e?.message });
+        logger.error('generateDailyTasksHttp failed', e);
+        res.status(500).json({ ok: false, error: e?.message });
     }
 });

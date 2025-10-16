@@ -1,5 +1,7 @@
-// default_tasks から当日分の tasks を生成するCloud Functions。
-import * as functions from 'firebase-functions';
+// default_tasks から当日分の tasks を生成する Cloud Functions (2nd Gen, Node.js 20)。
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onRequest } from 'firebase-functions/v2/https';
+import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 
 try { admin.initializeApp(); } catch {}
@@ -60,35 +62,37 @@ async function generateForHousehold(householdId: string) {
 }
 
 // Pub/Subスケジュール: JST 05:00 に全householdを走査
-export const generateDailyTasks = functions
-  .region('asia-northeast1')
-  .pubsub.schedule('0 5 * * *')
-  .timeZone('Asia/Tokyo')
-  .onRun(async () => {
+export const generateDailyTasks = onSchedule(
+  {
+    schedule: '0 5 * * *',
+    timeZone: 'Asia/Tokyo',
+    region: 'asia-northeast1',
+  },
+  async () => {
     const householdsSnap = await db.collection('default_tasks').get();
     const tasks: Promise<any>[] = [];
     householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
     await Promise.all(tasks);
-  });
+    logger.info('Daily tasks generated', { count: householdsSnap.size });
+  }
+);
 
 // Manual trigger for testing (secure appropriately in production)
 // 手動HTTPトリガ（検証用途）。本番は認証等で保護すること。
-export const generateDailyTasksHttp = functions
-  .region('asia-northeast1')
-  .https.onRequest(async (req, res) => {
-    const householdId = req.query.householdId as string | undefined;
-    try {
-      if (householdId) {
-        await generateForHousehold(householdId);
-      } else {
-        const householdsSnap = await db.collection('default_tasks').get();
-        const tasks: Promise<any>[] = [];
-        householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
-        await Promise.all(tasks);
-      }
-      res.status(200).send({ ok: true, dateKey: todayKeyJST() });
-    } catch (e: any) {
-      console.error(e);
-      res.status(500).send({ ok: false, error: e?.message });
+export const generateDailyTasksHttp = onRequest({ region: 'asia-northeast1' }, async (req, res) => {
+  const householdId = (req.query.householdId as string | undefined) || undefined;
+  try {
+    if (householdId) {
+      await generateForHousehold(householdId);
+    } else {
+      const householdsSnap = await db.collection('default_tasks').get();
+      const tasks: Promise<any>[] = [];
+      householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
+      await Promise.all(tasks);
     }
-  });
+    res.status(200).json({ ok: true, dateKey: todayKeyJST() });
+  } catch (e: any) {
+    logger.error('generateDailyTasksHttp failed', e);
+    res.status(500).json({ ok: false, error: e?.message });
+  }
+});

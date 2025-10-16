@@ -119,7 +119,7 @@ service cloud.firestore {
 
 ## Functions（雛形）
 - 本リポジトリ `functions/` に雛形を同梱
-  - `functions/src/index.ts`: 05:00 JSTに `default_tasks` から当日分を `tasks` へ生成
+  - `functions/src/index.ts`: 05:00 JSTに `default_tasks` から当日分を `tasks` へ生成（Functions 2nd Gen / Node.js 20）
   - 手順（例）
     1. Firebase CLI をセットアップ（ローカル）
     2. `cd functions && npm install`
@@ -141,7 +141,7 @@ service cloud.firestore {
 - ルートで `.firebaserc` を設定（本リポジトリは dev を default に設定済み）
 - 明示切替: `firebase use dev` または `firebase use prod`
 
-3) デプロイ（dev の例）
+3) デプロイ（dev の例｜Node.js 20 / Functions v2）
 ```
 cd functions
 npm install
@@ -158,7 +158,7 @@ firebase deploy --only functions --config ../firebase.json --project famly-dev-4
   - householdId を指定して単体確認: `...?householdId=<YOUR_HOUSEHOLD_ID>`
 
 5) スケジュール（自動生成）
-- コード内の `pubsub.schedule('0 5 * * *').timeZone('Asia/Tokyo')` により、05:00 JST に Cloud Scheduler ジョブが作成されます
+- Functions v2 の `onSchedule({ schedule: '0 5 * * *', timeZone: 'Asia/Tokyo' })` により、05:00 JST に Cloud Scheduler ジョブが作成されます
 - エラー時は Console の Cloud Scheduler/Cloud Logs を確認
 
 6) コスト最適化のヒント
