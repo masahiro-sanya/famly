@@ -89,18 +89,14 @@ export const generateDailyTasksHttp = onRequest({ region: 'asia-northeast1' }, a
     || (req.query.houholdId as string | undefined) // タイプミス対策
     || undefined;
   try {
-    if (householdId) {
-      await generateForHousehold(householdId);
-    } else {
-      const dow = todayWeekdayJST();
-      const items = await db.collectionGroup('items').where('daysOfWeek', 'array-contains', dow).get();
-      const householdIds = new Set<string>();
-      items.forEach((d) => {
-        const hid = d.ref.parent.parent?.id;
-        if (hid) householdIds.add(hid);
-      });
-      await Promise.all([...householdIds].map((hid) => generateForHousehold(hid)));
+    // householdId は必須。未指定アクセス（Botや誤アクセス）は 400 で早期終了し、
+    // Firestore クエリを走らせないことで 500(FAILED_PRECONDITION) を防ぐ。
+    if (!householdId) {
+      res.status(400).json({ ok: false, error: 'householdId is required' });
+      return;
     }
+
+    await generateForHousehold(householdId);
     res.status(200).json({ ok: true, dateKey: todayKeyJST() });
   } catch (e: any) {
     logger.error('generateDailyTasksHttp failed', e);
