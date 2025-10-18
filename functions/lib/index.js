@@ -100,25 +100,38 @@ exports.generateDailyTasks = (0, scheduler_1.onSchedule)({
     timeZone: 'Asia/Tokyo',
     region: 'asia-northeast1',
 }, async () => {
-    const householdsSnap = await db.collection('default_tasks').get();
-    const tasks = [];
-    householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
-    await Promise.all(tasks);
-    logger.info('Daily tasks generated', { count: householdsSnap.size });
+    const dow = todayWeekdayJST();
+    // 親ドキュメントがなくても拾えるように collectionGroup で items を検索
+    const items = await db.collectionGroup('items').where('daysOfWeek', 'array-contains', dow).get();
+    const householdIds = new Set();
+    items.forEach((d) => {
+        const hid = d.ref.parent.parent?.id;
+        if (hid)
+            householdIds.add(hid);
+    });
+    await Promise.all([...householdIds].map((hid) => generateForHousehold(hid)));
+    logger.info('Daily tasks generated', { households: householdIds.size });
 });
 // Manual trigger for testing (secure appropriately in production)
 // 手動HTTPトリガ（検証用途）。本番は認証等で保護すること。
 exports.generateDailyTasksHttp = (0, https_1.onRequest)({ region: 'asia-northeast1' }, async (req, res) => {
-    const householdId = req.query.householdId || undefined;
+    const householdId = req.query.householdId
+        || req.query.houholdId // タイプミス対策
+        || undefined;
     try {
         if (householdId) {
             await generateForHousehold(householdId);
         }
         else {
-            const householdsSnap = await db.collection('default_tasks').get();
-            const tasks = [];
-            householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
-            await Promise.all(tasks);
+            const dow = todayWeekdayJST();
+            const items = await db.collectionGroup('items').where('daysOfWeek', 'array-contains', dow).get();
+            const householdIds = new Set();
+            items.forEach((d) => {
+                const hid = d.ref.parent.parent?.id;
+                if (hid)
+                    householdIds.add(hid);
+            });
+            await Promise.all([...householdIds].map((hid) => generateForHousehold(hid)));
         }
         res.status(200).json({ ok: true, dateKey: todayKeyJST() });
     }

@@ -69,26 +69,37 @@ export const generateDailyTasks = onSchedule(
     region: 'asia-northeast1',
   },
   async () => {
-    const householdsSnap = await db.collection('default_tasks').get();
-    const tasks: Promise<any>[] = [];
-    householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
-    await Promise.all(tasks);
-    logger.info('Daily tasks generated', { count: householdsSnap.size });
+    const dow = todayWeekdayJST();
+    // 親ドキュメントがなくても拾えるように collectionGroup で items を検索
+    const items = await db.collectionGroup('items').where('daysOfWeek', 'array-contains', dow).get();
+    const householdIds = new Set<string>();
+    items.forEach((d) => {
+      const hid = d.ref.parent.parent?.id;
+      if (hid) householdIds.add(hid);
+    });
+    await Promise.all([...householdIds].map((hid) => generateForHousehold(hid)));
+    logger.info('Daily tasks generated', { households: householdIds.size });
   }
 );
 
 // Manual trigger for testing (secure appropriately in production)
 // 手動HTTPトリガ（検証用途）。本番は認証等で保護すること。
 export const generateDailyTasksHttp = onRequest({ region: 'asia-northeast1' }, async (req, res) => {
-  const householdId = (req.query.householdId as string | undefined) || undefined;
+  const householdId = (req.query.householdId as string | undefined)
+    || (req.query.houholdId as string | undefined) // タイプミス対策
+    || undefined;
   try {
     if (householdId) {
       await generateForHousehold(householdId);
     } else {
-      const householdsSnap = await db.collection('default_tasks').get();
-      const tasks: Promise<any>[] = [];
-      householdsSnap.forEach((h) => tasks.push(generateForHousehold(h.id)));
-      await Promise.all(tasks);
+      const dow = todayWeekdayJST();
+      const items = await db.collectionGroup('items').where('daysOfWeek', 'array-contains', dow).get();
+      const householdIds = new Set<string>();
+      items.forEach((d) => {
+        const hid = d.ref.parent.parent?.id;
+        if (hid) householdIds.add(hid);
+      });
+      await Promise.all([...householdIds].map((hid) => generateForHousehold(hid)));
     }
     res.status(200).json({ ok: true, dateKey: todayKeyJST() });
   } catch (e: any) {

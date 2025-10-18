@@ -43,6 +43,8 @@ export function useDefaultTasks(householdId?: string | null) {
  */
 export async function addDefaultTask(params: { householdId: string; title: string; daysOfWeek: number[]; order?: number }) {
   const { householdId, title, daysOfWeek } = params;
+  // 親ドキュメントが存在しない場合に備え、空ドキュメントをmergeで作成
+  await setDoc(doc(db, 'default_tasks', householdId), { touchedAt: serverTimestamp() }, { merge: true } as any);
   await addDoc(col(householdId), {
     title: title.trim(),
     // 重複除去＋昇順ソートで正規化
