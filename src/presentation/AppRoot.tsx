@@ -13,12 +13,14 @@ import { SettingsView } from './components/SettingsView';
 import { TabButton } from './components/TabButton';
 import { InputBar } from './components/InputBar';
 import { useUIStore } from '../application/store';
+import { useHousehold, createHousehold, regenerateInviteCode, joinByInvite, leaveHousehold } from '../application/households';
 import { useDefaultTasks, addDefaultTask, updateDefaultTaskDays, updateDefaultTaskTitle, deleteDefaultTask } from '../application/defaultTasks';
 import { Provider as PaperProvider } from 'react-native-paper';
 
 export default function AppRoot() {
   const { user, profile } = useAuthState();
   const tasks = useTasks(profile?.householdId);
+  const currentHousehold = useHousehold(profile?.householdId);
   const defaults = useDefaultTasks(profile?.householdId);
   const tab = useUIStore((s: any) => s.tab);
   const setTab = useUIStore((s: any) => s.setTab);
@@ -97,13 +99,31 @@ export default function AppRoot() {
       )}
 
       {tab === 'profile' && profile && (
-        <ProfileView profile={profile} onSave={(name) => updateProfileName(user.uid, name.trim())} />
+        <ProfileView
+          profile={profile}
+          onSave={(name) => updateProfileName(user.uid, name.trim())}
+          householdName={currentHousehold?.name ?? null}
+          householdId={profile.householdId}
+          membersCount={currentHousehold?.members?.length ?? null}
+        />
       )}
 
       {tab === 'settings' && profile && (
         <SettingsView
           householdId={profile.householdId}
-          onSaveHouseholdId={(hid) => updateHouseholdId(user.uid, hid.trim() || user.uid)}
+          inviteCode={currentHousehold?.inviteCode}
+          onCreateHousehold={async (name) => {
+            await createHousehold(user.uid, name);
+          }}
+          onJoinByCode={async (code) => {
+            await joinByInvite(user.uid, code);
+          }}
+          onRegenerateInvite={async () => {
+            if (profile.householdId) await regenerateInviteCode(profile.householdId);
+          }}
+          onLeave={async () => {
+            if (profile.householdId) await leaveHousehold(user.uid, profile.householdId);
+          }}
           onSignOut={() => signOut()}
         />
       )}
