@@ -69,16 +69,12 @@ export const generateDailyTasks = onSchedule(
     region: 'asia-northeast1',
   },
   async () => {
-    const dow = todayWeekdayJST();
-    // 親ドキュメントがなくても拾えるように collectionGroup で items を検索
-    const items = await db.collectionGroup('items').where('daysOfWeek', 'array-contains', dow).get();
-    const householdIds = new Set<string>();
-    items.forEach((d) => {
-      const hid = d.ref.parent.parent?.id;
-      if (hid) householdIds.add(hid);
-    });
-    await Promise.all([...householdIds].map((hid) => generateForHousehold(hid)));
-    logger.info('Daily tasks generated', { households: householdIds.size });
+    // collectionGroup ではなく、親ドキュメント列挙で householdId を取得する方式に変更。
+    // これにより items/daysOfWeek の単一フィールド（CG）インデックスが不要になる。
+    const householdsSnap = await db.collection('default_tasks').get();
+    const ids = householdsSnap.docs.map((d) => d.id);
+    await Promise.all(ids.map((hid) => generateForHousehold(hid)));
+    logger.info('Daily tasks generated', { households: ids.length });
   }
 );
 
