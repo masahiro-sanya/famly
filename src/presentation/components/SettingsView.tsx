@@ -6,23 +6,31 @@ import * as Clipboard from 'expo-clipboard';
 export function SettingsView({
   householdId,
   inviteCode,
+  householdName,
+  members,
   onCreateHousehold,
   onJoinByCode,
   onRegenerateInvite,
+  onUpdateHouseholdName,
   onLeave,
   onSignOut,
 }: {
   householdId: string;
   inviteCode?: string;
+  householdName?: string;
+  members?: Array<{ id: string; name?: string; email?: string }>;
   onCreateHousehold: (name: string) => void;
   onJoinByCode: (code: string) => void;
   onRegenerateInvite: () => void;
+  onUpdateHouseholdName: (name: string) => void;
   onLeave: () => void;
   onSignOut: () => void;
 }) {
   const [newName, setNewName] = useState('');
   const [code, setCode] = useState('');
   const [copied, setCopied] = useState(false);
+  const [editName, setEditName] = useState(householdName ?? '');
+  useEffect(() => setEditName(householdName ?? ''), [householdName]);
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={styles.card}>
@@ -49,6 +57,24 @@ export function SettingsView({
         <View style={{ height: 8 }} />
       ) : null}
       {!!inviteCode && <Button title="招待コードを再発行" onPress={onRegenerateInvite} />}
+
+      <View style={{ height: 16 }} />
+      <Text style={styles.label}>家族名を編集</Text>
+      <TextInput value={editName} onChangeText={setEditName} style={styles.input} />
+      <View style={{ height: 8 }} />
+      <Button title="家族名を保存" onPress={() => onUpdateHouseholdName(editName)} />
+
+      <View style={{ height: 16 }} />
+      <Text style={styles.label}>メンバー</Text>
+      <View style={{ marginBottom: 8 }}>
+        {(members && members.length > 0) ? (
+          members.map((m) => (
+            <Text key={m.id} style={styles.memberLine}>{m.name || '(名前未設定)'} <Text style={styles.hint}>{m.email || ''}</Text></Text>
+          ))
+        ) : (
+          <Text style={styles.muted}>（メンバーなし）</Text>
+        )}
+      </View>
 
       <View style={{ height: 16 }} />
       <Text style={styles.label}>招待コードで参加</Text>
@@ -91,4 +117,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, color: '#666' },
   muted: { color: '#666', marginBottom: 4 },
   inviteRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  memberLine: { color: '#444', marginBottom: 2 },
+  hint: { color: '#aaa' },
 });

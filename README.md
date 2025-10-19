@@ -168,6 +168,32 @@ firebase deploy --only functions --config ../firebase.json --project famly-dev-4
 - ログを最小限に（大量の info ログを避ける）
 - 単一リージョン `asia-northeast1` に統一
 
+## Firestore ルール（MVP本番想定）
+
+このリポジトリに `firestore.rules` を同梱しています。内容は次の方針です。
+- users: 自分のみ read/update、初回 create も本人のみ
+- households: MVPの都合で read は認証ユーザーに許可（招待コード検索のため）。write はメンバー
+- default_tasks/items: householdメンバーのみ read/write
+- tasks: 自分の household のみ read、create は自分の householdId、update/delete も household 内に限定
+- tasks/stamps: 本人のみ create（fromUserId==uid）、update/delete は不可
+
+適用コマンド（dev例）:
+```
+firebase deploy --only firestore:rules --project famly-dev-41b50
+```
+
+注意:
+- 招待コード参加を完全に閉じたい場合は、households の read をメンバー限定にする必要があります（その場合は参加処理をCloud Functions/Callableに移行してください）。
+
+## インデックス（必須）
+
+- 複合（tasks / 当日一覧）
+  - householdId (==), dateKey (==), createdAt (desc)
+- 複合（tasks / 重複防止チェック）
+  - householdId (==), dateKey (==), title (==)
+  - 生成前存在確認クエリで使用
+
+
 Firestore セキュリティルールは最小権限で運用してください。クライアントのみの公開リポジトリにはルールは含みません。
 
 ## 開発メモ / アーキテクチャ

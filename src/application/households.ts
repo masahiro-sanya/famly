@@ -37,6 +37,25 @@ export function useHousehold(householdId?: string | null) {
   return household;
 }
 
+// household名の更新
+export async function updateHouseholdName(householdId: string, name: string) {
+  await updateDoc(doc(db, 'households', householdId), { name: name.trim() });
+}
+
+// householdメンバー一覧（users から householdId 一致で取得）
+export function useHouseholdMembers(householdId?: string | null) {
+  const [members, setMembers] = useState<Array<{ id: string; name?: string; email?: string }>>([]);
+  useEffect(() => {
+    if (!householdId) { setMembers([]); return; }
+    const q = query(collection(db, 'users'), where('householdId', '==', householdId));
+    const unsub = onSnapshot(q, (snap) => {
+      setMembers(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })));
+    });
+    return () => unsub();
+  }, [householdId]);
+  return members;
+}
+
 function randomCode(len = 6) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';
@@ -74,4 +93,3 @@ export async function leaveHousehold(userId: string, householdId: string) {
   await updateDoc(doc(db, 'households', householdId), { members: arrayRemove(userId) });
   await updateDoc(doc(db, 'users', userId), { householdId: userId });
 }
-

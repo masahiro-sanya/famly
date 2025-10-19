@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function userHousehold() {
+      return get(/databases/$(db)/documents/users/$(uid())).data.householdId;
+    }
+    function isMember(hid) {
+      return hid == uid() || (
+        exists(/databases/$(db)/documents/households/$(hid)) &&
+        uid() in get(/databases/$(db)/documents/households/$(hid)).data.members
+      );
+    }
+
+    // users: 自分のみ参照・更新可。初回作成も本人のみ許可。
+    match /users/{userId} {
+      // 自分のドキュメントは作成可
+      allow create: if signedIn() && userId == uid();
+      // 読み取りは「自分」または「同じhouseholdのメンバー」を許可（メンバー一覧表示のため）
+      allow read: if signedIn() && (userId == uid() || resource.data.householdId == userHousehold());
+      // 更新は本人のみ（名前など）
+      allow update: if signedIn() && userId == uid();
+      allow delete: if false;
+    }
+
+    // households: MVPのため、招待コード検索の都合上、認証済ユーザーのreadを許可。
+    // 将来的にはCloud Functions経由の参加フローに移行し、readをメンバー限定に絞ることを推奨。
+    match /households/{hid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && uid() in request.resource.data.members;
+      allow update: if signedIn() && isMember(hid);
+      allow delete: if false;
+    }
+
+    // default_tasks: householdメンバーのみ参照・更新可（itemsサブコレクションも同様）。
+    match /default_tasks/{hid} {
+      allow read, write: if signedIn() && isMember(hid);
+      match /items/{docId} {
+        allow read, write: if signedIn() && isMember(hid);
+      }
+    }
+
+    // tasks: 自分のhouseholdスコープのみ。作成は自分のhouseholdIdでのみ許可。
+    match /tasks/{taskId} {
+      allow read: if signedIn() && resource.data.householdId == userHousehold();
+      allow create: if signedIn() && request.resource.data.householdId == userHousehold();
+      allow update, delete: if signedIn() && resource.data.householdId == userHousehold();
+
+      // stamps: 作成は本人のみ（fromUserId==uid）。更新/削除は不可（1ユーザー1種類1回）。
+      match /stamps/{sid} {
+        allow create: if signedIn()
+          && get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId == userHousehold()
+          && request.resource.data.fromUserId == uid();
+        allow read: if signedIn() && get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId == userHousehold();
+        allow update, delete: if false;
+      }
+    }
+  }
+}

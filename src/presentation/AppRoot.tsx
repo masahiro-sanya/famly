@@ -13,7 +13,7 @@ import { SettingsView } from './components/SettingsView';
 import { TabButton } from './components/TabButton';
 import { InputBar } from './components/InputBar';
 import { useUIStore } from '../application/store';
-import { useHousehold, createHousehold, regenerateInviteCode, joinByInvite, leaveHousehold } from '../application/households';
+import { useHousehold, createHousehold, regenerateInviteCode, joinByInvite, leaveHousehold, useHouseholdMembers, updateHouseholdName } from '../application/households';
 import { useDefaultTasks, addDefaultTask, updateDefaultTaskDays, updateDefaultTaskTitle, deleteDefaultTask } from '../application/defaultTasks';
 import { Provider as PaperProvider } from 'react-native-paper';
 
@@ -21,6 +21,7 @@ export default function AppRoot() {
   const { user, profile } = useAuthState();
   const tasks = useTasks(profile?.householdId);
   const currentHousehold = useHousehold(profile?.householdId);
+  const members = useHouseholdMembers(profile?.householdId);
   const defaults = useDefaultTasks(profile?.householdId);
   const tab = useUIStore((s: any) => s.tab);
   const setTab = useUIStore((s: any) => s.setTab);
@@ -112,6 +113,8 @@ export default function AppRoot() {
         <SettingsView
           householdId={profile.householdId}
           inviteCode={currentHousehold?.inviteCode}
+          householdName={currentHousehold?.name}
+          members={members}
           onCreateHousehold={async (name) => {
             await createHousehold(user.uid, name);
           }}
@@ -120,6 +123,9 @@ export default function AppRoot() {
           }}
           onRegenerateInvite={async () => {
             if (profile.householdId) await regenerateInviteCode(profile.householdId);
+          }}
+          onUpdateHouseholdName={async (name) => {
+            if (profile.householdId) await updateHouseholdName(profile.householdId, name);
           }}
           onLeave={async () => {
             if (profile.householdId) await leaveHousehold(user.uid, profile.householdId);
