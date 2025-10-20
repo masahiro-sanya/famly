@@ -14,7 +14,7 @@ import { TabButton } from './components/TabButton';
 import { InputBar } from './components/InputBar';
 import { useUIStore } from '../application/store';
 import { useHousehold, createHousehold, regenerateInviteCode, joinByInvite, leaveHousehold, useHouseholdMembers, updateHouseholdName } from '../application/households';
-import { useDefaultTasks, addDefaultTask, updateDefaultTaskDays, updateDefaultTaskTitle, deleteDefaultTask } from '../application/defaultTasks';
+import { useDefaultTasks, addDefaultTask, updateDefaultTaskDays, updateDefaultTaskTitle, deleteDefaultTask, moveDefaultTask } from '../application/defaultTasks';
 import { Provider as PaperProvider } from 'react-native-paper';
 
 export default function AppRoot() {
@@ -84,6 +84,7 @@ export default function AppRoot() {
           onAdd={(title, days) => addDefaultTask({ householdId: profile.householdId, title, daysOfWeek: days })}
           onUpdateTitle={(id, v) => updateDefaultTaskTitle(profile.householdId, id, v)}
           onUpdateDays={(id, ds) => updateDefaultTaskDays(profile.householdId, id, ds)}
+          onMove={(id, dir) => moveDefaultTask(profile.householdId, defaults, id, dir)}
           onDelete={(id) => deleteDefaultTask(profile.householdId, id)}
         />
       )}

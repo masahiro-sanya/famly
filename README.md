@@ -26,6 +26,9 @@ npx expo install react-native-paper react-native-safe-area-context react-native-
 
 # Zustand（状態管理）
 npm i zustand
+
+# Auth永続化（推奨）
+npx expo install @react-native-async-storage/async-storage
 ```
 
 3) Firebase 設定（秘密情報はコミットしない）
@@ -204,6 +207,7 @@ Firestore セキュリティルールは最小権限で運用してください�
   - `src/presentation/`: UIコンポーネント/画面（`AppRoot.tsx`, `components/*`）
 - UI ライブラリ: React Native Paper（`AppRoot.tsx` を `PaperProvider` でラップ）
 - 状態管理: Zustand（`src/application/store.ts` の UI ストア）
+- Auth永続化: `src/infrastructure/firebaseClient.ts` で React Native 環境は `initializeAuth(getReactNativePersistence(AsyncStorage))` を使用（Webは `getAuth`）
 - ルートの `App.tsx` は薄いラッパーで `src/presentation/AppRoot` を描画
 - UI: 依存追加を避け標準コンポーネントで構成（Paper導入は任意）
 - 型: TypeScript strict

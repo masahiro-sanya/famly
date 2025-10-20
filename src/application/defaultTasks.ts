@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { DefaultTask } from '../domain/models';
 
@@ -56,15 +57,43 @@ export async function addDefaultTask(params: { householdId: string; title: strin
 
 /** タイトルを更新 */
 export async function updateDefaultTaskTitle(householdId: string, id: string, title: string) {
-  await updateDoc(doc(db, 'default_tasks', householdId, id), { title: title.trim() });
+  await updateDoc(doc(db, 'default_tasks', householdId, 'items', id), { title: title.trim() });
 }
 
 /** 曜日配列を更新（正規化あり） */
 export async function updateDefaultTaskDays(householdId: string, id: string, daysOfWeek: number[]) {
-  await updateDoc(doc(db, 'default_tasks', householdId, id), { daysOfWeek: Array.from(new Set(daysOfWeek)).sort() });
+  await updateDoc(doc(db, 'default_tasks', householdId, 'items', id), { daysOfWeek: Array.from(new Set(daysOfWeek)).sort() });
 }
 
 /** アイテムを削除 */
 export async function deleteDefaultTask(householdId: string, id: string) {
-  await deleteDoc(doc(db, 'default_tasks', householdId, id));
+  await deleteDoc(doc(db, 'default_tasks', householdId, 'items', id));
+}
+
+/**
+ * 並び替え（隣接要素と order を入れ替える）。
+ * list は useDefaultTasks で取得した昇順リストを渡す。
+ */
+export async function moveDefaultTask(
+  householdId: string,
+  list: DefaultTask[],
+  id: string,
+  direction: 'up' | 'down'
+) {
+  const idx = list.findIndex((i) => i.id === id);
+  if (idx < 0) return;
+  const neighborIndex = direction === 'up' ? idx - 1 : idx + 1;
+  if (neighborIndex < 0 || neighborIndex >= list.length) return; // 端
+  const a = list[idx];
+  const b = list[neighborIndex];
+  const aRef = doc(db, 'default_tasks', householdId, 'items', a.id);
+  const bRef = doc(db, 'default_tasks', householdId, 'items', b.id);
+  await runTransaction(db, async (trx) => {
+    const aSnap = await trx.get(aRef);
+    const bSnap = await trx.get(bRef);
+    const aOrder = (aSnap.data() as any)?.order ?? Date.now();
+    const bOrder = (bSnap.data() as any)?.order ?? Date.now() + 1;
+    trx.update(aRef, { order: bOrder });
+    trx.update(bRef, { order: aOrder });
+  });
 }

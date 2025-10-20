@@ -11,17 +11,20 @@ export function DefaultTasksView({
   onAdd,
   onUpdateTitle,
   onUpdateDays,
+  onMove,
   onDelete,
 }: {
   items: DefaultTask[];
   onAdd: (title: string, days: number[]) => void;
   onUpdateTitle: (id: string, title: string) => void;
   onUpdateDays: (id: string, days: number[]) => void;
+  onMove: (id: string, direction: 'up' | 'down') => void;
   onDelete: (id: string) => void;
 }) {
   const [title, setTitle] = useState('');
   const [days, setDays] = useState<number[]>([]);
   const toggleDay = (d: number) => setDays((prev) => prev.includes(d) ? prev.filter(x => x!==d) : [...prev, d]);
+  const canAdd = title.trim().length > 0 && days.length > 0;
 
   return (
     <View style={styles.card}>
@@ -36,6 +39,13 @@ export function DefaultTasksView({
               value={item.title}
               onChangeText={(v) => onUpdateTitle(item.id, v)}
             />
+            <View style={styles.row}>
+              <Button title="↑" onPress={() => onMove(item.id, 'up')} />
+              <View style={{ width: 8 }} />
+              <Button title="↓" onPress={() => onMove(item.id, 'down')} />
+              <View style={{ width: 8 }} />
+              <Button title="削除" color="#b00020" onPress={() => onDelete(item.id)} />
+            </View>
             <View style={{ height: 8 }} />
             <View style={styles.daysRow}>
               {dayLabels.map((label, idx) => {
@@ -55,7 +65,6 @@ export function DefaultTasksView({
               })}
             </View>
             <View style={{ height: 8 }} />
-            <Button title="削除" color="#b00020" onPress={() => onDelete(item.id)} />
           </View>
         )}
         ListEmptyComponent={<Text style={styles.muted}>まだデフォルトタスクがありません</Text>}
@@ -87,7 +96,8 @@ export function DefaultTasksView({
       <View style={{ height: 8 }} />
       <Button
         title="追加"
-        onPress={() => { if (title.trim()) { onAdd(title, days); setTitle(''); setDays([]); } }}
+        disabled={!canAdd}
+        onPress={() => { if (canAdd) { onAdd(title, days); setTitle(''); setDays([]); } }}
       />
     </View>
   );
@@ -98,6 +108,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12 },
   item: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
   daysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   dayChip: { paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: '#ddd', borderRadius: 999 },
   dayChipActive: { backgroundColor: '#eef4ff', borderColor: '#99b7ff' },
