@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, StyleSheet, Text, TextInput, View, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { Alert, Button, StyleSheet, Text, TextInput, View, Keyboard, TouchableWithoutFeedback, Platform, ToastAndroid } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
 // Household管理を含む設定画面
@@ -19,12 +19,12 @@ export function SettingsView({
   inviteCode?: string;
   householdName?: string;
   members?: Array<{ id: string; name?: string; email?: string }>;
-  onCreateHousehold: (name: string) => void;
-  onJoinByCode: (code: string) => void;
-  onRegenerateInvite: () => void;
-  onUpdateHouseholdName: (name: string) => void;
-  onLeave: () => void;
-  onSignOut: () => void;
+  onCreateHousehold: (name: string) => Promise<void> | void;
+  onJoinByCode: (code: string) => Promise<void> | void;
+  onRegenerateInvite: () => Promise<void> | void;
+  onUpdateHouseholdName: (name: string) => Promise<void> | void;
+  onLeave: () => Promise<void> | void;
+  onSignOut: () => Promise<void> | void;
 }) {
   const [newName, setNewName] = useState('');
   const [code, setCode] = useState('');
@@ -56,13 +56,31 @@ export function SettingsView({
       {inviteCode ? (
         <View style={{ height: 8 }} />
       ) : null}
-      {!!inviteCode && <Button title="招待コードを再発行" onPress={onRegenerateInvite} />}
+      {!!inviteCode && (
+        <Button title="招待コードを再発行" onPress={async () => {
+          try {
+            await onRegenerateInvite();
+            Platform.OS === 'android' ? ToastAndroid.show('招待コードを再発行しました', ToastAndroid.SHORT) : Alert.alert('完了', '招待コードを再発行しました');
+          } catch (e: any) {
+            Alert.alert('エラー', e?.message ?? '再発行に失敗しました');
+          }
+        }} />
+      )}
 
       <View style={{ height: 16 }} />
       <Text style={styles.label}>家族名を編集</Text>
       <TextInput value={editName} onChangeText={setEditName} style={styles.input} />
       <View style={{ height: 8 }} />
-      <Button title="家族名を保存" onPress={() => onUpdateHouseholdName(editName)} />
+      <Button title="家族名を保存" onPress={async () => {
+        const v = editName.trim();
+        if (!v) { Alert.alert('エラー', '家族名を入力してください'); return; }
+        try {
+          await onUpdateHouseholdName(v);
+          Platform.OS === 'android' ? ToastAndroid.show('保存しました', ToastAndroid.SHORT) : Alert.alert('完了', '保存しました');
+        } catch (e: any) {
+          Alert.alert('エラー', e?.message ?? '保存に失敗しました');
+        }
+      }} />
 
       <View style={{ height: 16 }} />
       <Text style={styles.label}>メンバー</Text>
@@ -80,16 +98,47 @@ export function SettingsView({
       <Text style={styles.label}>招待コードで参加</Text>
       <TextInput value={code} onChangeText={setCode} style={styles.input} autoCapitalize="characters" />
       <View style={{ height: 8 }} />
-      <Button title="参加" onPress={() => onJoinByCode(code)} />
+      <Button title="参加" onPress={async () => {
+        if (!code.trim()) { Alert.alert('エラー', '招待コードを入力してください'); return; }
+        try {
+          await onJoinByCode(code.trim());
+          setCode('');
+          Platform.OS === 'android' ? ToastAndroid.show('参加しました', ToastAndroid.SHORT) : Alert.alert('完了', '参加しました');
+        } catch (e: any) {
+          Alert.alert('エラー', e?.message ?? '参加に失敗しました（無効なコードの可能性）');
+        }
+      }} />
 
       <View style={{ height: 16 }} />
       <Text style={styles.label}>新しい家族を作成（名前）</Text>
       <TextInput value={newName} onChangeText={setNewName} style={styles.input} />
       <View style={{ height: 8 }} />
-      <Button title="家族を作成" onPress={() => { onCreateHousehold(newName); setNewName(''); }} />
+      <Button title="家族を作成" onPress={async () => {
+        const v = newName.trim();
+        if (!v) { Alert.alert('エラー', '家族名を入力してください'); return; }
+        try {
+          await onCreateHousehold(v);
+          setNewName('');
+          Platform.OS === 'android' ? ToastAndroid.show('作成しました', ToastAndroid.SHORT) : Alert.alert('完了', '作成しました');
+        } catch (e: any) {
+          Alert.alert('エラー', e?.message ?? '作成に失敗しました');
+        }
+      }} />
 
       <View style={{ height: 16 }} />
-      <Button title="家族から退出" color="#b00020" onPress={onLeave} />
+      <Button title="家族から退出" color="#b00020" onPress={() => {
+        Alert.alert('確認', '家族から退出しますか？（タスク共有が解除されます）', [
+          { text: 'キャンセル', style: 'cancel' },
+          { text: '退出', style: 'destructive', onPress: async () => {
+            try {
+              await onLeave();
+              Platform.OS === 'android' ? ToastAndroid.show('退出しました', ToastAndroid.SHORT) : Alert.alert('完了', '退出しました');
+            } catch (e: any) {
+              Alert.alert('エラー', e?.message ?? '退出に失敗しました');
+            }
+          }}
+        ]);
+      }} />
 
       <View style={{ height: 16 }} />
       <Button title="ログアウト" color="#b00020" onPress={onSignOut} />

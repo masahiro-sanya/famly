@@ -1,6 +1,6 @@
 // デフォルトタスク（テンプレ）の一覧/編集ビュー。
 import React, { useMemo, useState } from 'react';
-import { Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity } from 'react-native';
+import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity } from 'react-native';
 import { DefaultTask } from '../../domain/models';
 
 const dayLabels = ['日','月','火','水','木','金','土'];
@@ -44,7 +44,16 @@ export function DefaultTasksView({
               <View style={{ width: 8 }} />
               <Button title="↓" onPress={() => onMove(item.id, 'down')} />
               <View style={{ width: 8 }} />
-              <Button title="削除" color="#b00020" onPress={() => onDelete(item.id)} />
+              <Button
+                title="削除"
+                color="#b00020"
+                onPress={() =>
+                  Alert.alert('削除の確認', `「${item.title}」を削除しますか？`, [
+                    { text: 'キャンセル', style: 'cancel' },
+                    { text: '削除', style: 'destructive', onPress: () => onDelete(item.id) },
+                  ])
+                }
+              />
             </View>
             <View style={{ height: 8 }} />
             <View style={styles.daysRow}>
