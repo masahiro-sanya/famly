@@ -32,7 +32,11 @@ export function DefaultTasksView({
       <FlatList
         data={items}
         keyExtractor={(i) => i.id}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
+          (() => {
+            const isFirst = index === 0;
+            const isLast = index === items.length - 1;
+            return (
           <View style={styles.item}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
@@ -40,9 +44,9 @@ export function DefaultTasksView({
               onChangeText={(v) => onUpdateTitle(item.id, v)}
             />
             <View style={styles.row}>
-              <Button title="↑" onPress={() => onMove(item.id, 'up')} />
+              <Button title="↑" disabled={isFirst} onPress={() => onMove(item.id, 'up')} />
               <View style={{ width: 8 }} />
-              <Button title="↓" onPress={() => onMove(item.id, 'down')} />
+              <Button title="↓" disabled={isLast} onPress={() => onMove(item.id, 'down')} />
               <View style={{ width: 8 }} />
               <Button
                 title="削除"
@@ -75,6 +79,8 @@ export function DefaultTasksView({
             </View>
             <View style={{ height: 8 }} />
           </View>
+            );
+          })()
         )}
         ListEmptyComponent={<Text style={styles.muted}>まだデフォルトタスクがありません</Text>}
         style={{ alignSelf: 'stretch' }}

@@ -18,7 +18,7 @@ service cloud.firestore {
       // 自分のドキュメントは作成可
       allow create: if signedIn() && userId == uid();
       // 読み取りは「自分」または「同じhouseholdのメンバー」を許可（メンバー一覧表示のため）
-      allow read: if signedIn() && (userId == uid() || resource.data.householdId == userHousehold());
+      allow read: if signedIn() && (userId == uid() || isMember(resource.data.householdId));
       // 更新は本人のみ（名前など）
       allow update: if signedIn() && userId == uid();
       allow delete: if false;
@@ -43,17 +43,22 @@ service cloud.firestore {
 
     // tasks: 自分のhouseholdスコープのみ。作成は自分のhouseholdIdでのみ許可。
     match /tasks/{taskId} {
-      allow read: if signedIn() && resource.data.householdId == userHousehold();
-      allow create: if signedIn() && request.resource.data.householdId == userHousehold();
-      allow update, delete: if signedIn() && resource.data.householdId == userHousehold();
+      allow read: if signedIn() && isMember(resource.data.householdId);
+      allow create: if signedIn() && isMember(request.resource.data.householdId);
+      allow update, delete: if signedIn() && isMember(resource.data.householdId);
 
       // stamps: 作成は本人のみ（fromUserId==uid）。更新/削除は不可（1ユーザー1種類1回）。
       match /stamps/{sid} {
         allow create: if signedIn()
-          && get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId == userHousehold()
+          && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId)
           && request.resource.data.fromUserId == uid();
-        allow read: if signedIn() && get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId == userHousehold();
-        allow update, delete: if false;
+        allow read: if signedIn()
+          && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId);
+        // toggle目的: 自分が付けたスタンプのみ削除可
+        allow delete: if signedIn()
+          && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId)
+          && resource.data.fromUserId == uid();
+        allow update: if false;
       }
     }
   }

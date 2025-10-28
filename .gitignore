@@ -45,3 +45,6 @@ yarn-error.*
 
 # Functions build outputs
 /functions/lib/
+
+# Local temporary docs (not tracked)
+/docs/_local/
