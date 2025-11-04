@@ -1,6 +1,6 @@
 // デフォルトタスク（テンプレ）の一覧/編集ビュー。
 import React, { useMemo, useState } from 'react';
-import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity } from 'react-native';
+import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { DefaultTask } from '../../domain/models';
 
 const dayLabels = ['日','月','火','水','木','金','土'];
@@ -26,95 +26,124 @@ export function DefaultTasksView({
   const toggleDay = (d: number) => setDays((prev) => prev.includes(d) ? prev.filter(x => x!==d) : [...prev, d]);
   const canAdd = title.trim().length > 0 && days.length > 0;
 
+  type Row = DefaultTask | { id: '__new__' };
+  const dataWithFooter: Row[] = useMemo(() => [...items, { id: '__new__' } as { id: '__new__' }], [items]);
+
   return (
-    <View style={styles.card}>
-      <Text style={styles.sectionTitle}>デフォルトタスク</Text>
-      <FlatList
-        data={items}
-        keyExtractor={(i) => i.id}
-        renderItem={({ item, index }) => (
-          (() => {
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>デフォルトタスク</Text>
+        <FlatList
+          data={dataWithFooter}
+          keyExtractor={(i) => i.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          contentContainerStyle={{ paddingBottom: 240 }}
+          renderItem={({ item, index }) => {
+            if ((item as any).id === '__new__') {
+              return (
+                <View>
+                  <View style={{ height: 16 }} />
+                  <Text style={styles.sectionTitle}>新規追加</Text>
+                  <TextInput
+                    placeholder="タイトル"
+                    value={title}
+                    onChangeText={setTitle}
+                    style={styles.input}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      const v = title.trim();
+                      if (!v || days.length === 0) return;
+                      onAdd(v, days);
+                      setTitle('');
+                      setDays([]);
+                      Keyboard.dismiss();
+                    }}
+                  />
+                  <View style={{ height: 8 }} />
+                  <View style={styles.daysRow}>
+                    {dayLabels.map((label, idx) => {
+                      const active = days.includes(idx);
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          onPress={() => toggleDay(idx)}
+                          style={[styles.dayChip, active && styles.dayChipActive]}
+                        >
+                          <Text style={[styles.dayText, active && styles.dayTextActive]}>{label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <View style={{ height: 8 }} />
+                  <Button
+                    title="追加"
+                    disabled={!canAdd}
+                    onPress={() => {
+                      if (canAdd) {
+                        onAdd(title.trim(), days);
+                        setTitle('');
+                        setDays([]);
+                        Keyboard.dismiss();
+                      }
+                    }}
+                  />
+                </View>
+              );
+            }
+            const task = item as DefaultTask;
             const isFirst = index === 0;
             const isLast = index === items.length - 1;
             return (
-          <View style={styles.item}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              value={item.title}
-              onChangeText={(v) => onUpdateTitle(item.id, v)}
-            />
-            <View style={styles.row}>
-              <Button title="↑" disabled={isFirst} onPress={() => onMove(item.id, 'up')} />
-              <View style={{ width: 8 }} />
-              <Button title="↓" disabled={isLast} onPress={() => onMove(item.id, 'down')} />
-              <View style={{ width: 8 }} />
-              <Button
-                title="削除"
-                color="#b00020"
-                onPress={() =>
-                  Alert.alert('削除の確認', `「${item.title}」を削除しますか？`, [
-                    { text: 'キャンセル', style: 'cancel' },
-                    { text: '削除', style: 'destructive', onPress: () => onDelete(item.id) },
-                  ])
-                }
-              />
-            </View>
-            <View style={{ height: 8 }} />
-            <View style={styles.daysRow}>
-              {dayLabels.map((label, idx) => {
-                const active = (item.daysOfWeek || []).includes(idx);
-                return (
-                  <TouchableOpacity
-                    key={idx}
-                    onPress={() => {
-                      const next = active ? item.daysOfWeek.filter(d=>d!==idx) : [...(item.daysOfWeek||[]), idx];
-                      onUpdateDays(item.id, next);
-                    }}
-                    style={[styles.dayChip, active && styles.dayChipActive]}
-                  >
-                    <Text style={[styles.dayText, active && styles.dayTextActive]}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={{ height: 8 }} />
-          </View>
+              <View style={styles.item}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={task.title}
+                  onChangeText={(v) => onUpdateTitle(task.id, v)}
+                />
+                <View style={styles.row}>
+                  <Button title="↑" disabled={isFirst} onPress={() => onMove(task.id, 'up')} />
+                  <View style={{ width: 8 }} />
+                  <Button title="↓" disabled={isLast} onPress={() => onMove(task.id, 'down')} />
+                  <View style={{ width: 8 }} />
+                  <Button
+                    title="削除"
+                    color="#b00020"
+                    onPress={() =>
+                      Alert.alert('削除の確認', `「${task.title}」を削除しますか？`, [
+                        { text: 'キャンセル', style: 'cancel' },
+                        { text: '削除', style: 'destructive', onPress: () => onDelete(task.id) },
+                      ])
+                    }
+                  />
+                </View>
+                <View style={{ height: 8 }} />
+                <View style={styles.daysRow}>
+                  {dayLabels.map((label, idx) => {
+                    const active = (task.daysOfWeek || []).includes(idx);
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => {
+                          const next = active ? task.daysOfWeek.filter(d=>d!==idx) : [...(task.daysOfWeek||[]), idx];
+                          onUpdateDays(task.id, next);
+                        }}
+                        style={[styles.dayChip, active && styles.dayChipActive]}
+                      >
+                        <Text style={[styles.dayText, active && styles.dayTextActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={{ height: 8 }} />
+              </View>
             );
-          })()
-        )}
-        ListEmptyComponent={<Text style={styles.muted}>まだデフォルトタスクがありません</Text>}
-        style={{ alignSelf: 'stretch' }}
-      />
-      <View style={{ height: 16 }} />
-      <Text style={styles.sectionTitle}>新規追加</Text>
-      <TextInput
-        placeholder="タイトル"
-        value={title}
-        onChangeText={setTitle}
-        style={styles.input}
-      />
-      <View style={{ height: 8 }} />
-      <View style={styles.daysRow}>
-        {dayLabels.map((label, idx) => {
-          const active = days.includes(idx);
-          return (
-            <TouchableOpacity
-              key={idx}
-              onPress={() => toggleDay(idx)}
-              style={[styles.dayChip, active && styles.dayChipActive]}
-            >
-              <Text style={[styles.dayText, active && styles.dayTextActive]}>{label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+          }}
+          ListEmptyComponent={<Text style={styles.muted}>まだデフォルトタスクがありません</Text>}
+          style={{ alignSelf: 'stretch' }}
+        />
       </View>
-      <View style={{ height: 8 }} />
-      <Button
-        title="追加"
-        disabled={!canAdd}
-        onPress={() => { if (canAdd) { onAdd(title, days); setTitle(''); setDays([]); } }}
-      />
-    </View>
+    </TouchableWithoutFeedback>
   );
 }
 

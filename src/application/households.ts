@@ -1,5 +1,6 @@
 // Households 管理（作成/参加/退出/招待コード）と購読フック
 import { useEffect, useState } from 'react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../infrastructure/firebaseClient';
 import {
   addDoc,
@@ -92,4 +93,14 @@ export async function leaveHousehold(userId: string, householdId: string) {
   // householdから外し、ユーザーは個人ハウスホールドへ退避（存在しなくても householdId を自分UIDに設定）
   await updateDoc(doc(db, 'households', householdId), { members: arrayRemove(userId) });
   await updateDoc(doc(db, 'users', userId), { householdId: userId });
+}
+
+// Callable 経由の参加（推奨）: Functions 側でメンバー追加と householdId 更新を一括実行
+export async function joinByInviteCallable(code: string): Promise<string> {
+  const functions = getFunctions(undefined, 'asia-northeast1');
+  const fn = httpsCallable(functions, 'joinByInvite');
+  const res = await fn({ code });
+  const data = res.data as any;
+  if (!data?.ok) throw new Error(data?.error || '参加に失敗しました');
+  return data.householdId as string;
 }

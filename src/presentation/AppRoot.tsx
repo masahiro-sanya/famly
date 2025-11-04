@@ -13,7 +13,7 @@ import { SettingsView } from './components/SettingsView';
 import { TabButton } from './components/TabButton';
 import { InputBar } from './components/InputBar';
 import { useUIStore } from '../application/store';
-import { useHousehold, createHousehold, regenerateInviteCode, joinByInvite, leaveHousehold, useHouseholdMembers, updateHouseholdName } from '../application/households';
+import { useHousehold, createHousehold, regenerateInviteCode, joinByInvite, joinByInviteCallable, leaveHousehold, useHouseholdMembers, updateHouseholdName } from '../application/households';
 import { useDefaultTasks, addDefaultTask, updateDefaultTaskDays, updateDefaultTaskTitle, deleteDefaultTask, moveDefaultTask } from '../application/defaultTasks';
 import { Provider as PaperProvider } from 'react-native-paper';
 
@@ -120,7 +120,12 @@ export default function AppRoot() {
             await createHousehold(user.uid, name);
           }}
           onJoinByCode={async (code) => {
-            await joinByInvite(user.uid, code);
+            try {
+              await joinByInviteCallable(code);
+            } catch (e) {
+              // 旧クライアント方式のフォールバック（ルールで拒否される可能性あり）
+              await joinByInvite(user.uid, code);
+            }
           }}
           onRegenerateInvite={async () => {
             if (profile.householdId) await regenerateInviteCode(profile.householdId);

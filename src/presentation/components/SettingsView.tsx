@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Alert, Button, StyleSheet, Text, TextInput, View, Keyboard, TouchableWithoutFeedback, Platform, ToastAndroid } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Button, StyleSheet, Text, TextInput, View, Keyboard, TouchableWithoutFeedback, Platform, ToastAndroid, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { deleteMyAccount as deleteMyAccountAction } from '../../application/account';
 
 // Household管理を含む設定画面
 export function SettingsView({
@@ -31,6 +32,7 @@ export function SettingsView({
   const [copied, setCopied] = useState(false);
   const [editName, setEditName] = useState(householdName ?? '');
   useEffect(() => setEditName(householdName ?? ''), [householdName]);
+  const privacyUrl = useMemo(() => (process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL as string | undefined) || undefined, []);
   const isInFamily = !!inviteCode; // householdsドキュメントがある＝家族に参加中とみなす
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -157,6 +159,42 @@ export function SettingsView({
 
       <View style={{ height: 16 }} />
       <Button title="ログアウト" color="#b00020" onPress={onSignOut} />
+
+      <View style={{ height: 16 }} />
+      {privacyUrl ? (
+        <Button title="プライバシーポリシー" onPress={async () => { try { await Linking.openURL(privacyUrl); } catch (e) { Alert.alert('エラー', 'リンクを開けませんでした'); } }} />
+      ) : null}
+
+      <View style={{ height: 16 }} />
+      <Button
+        title="アカウント削除"
+        color="#b00020"
+        onPress={() => {
+          Alert.alert(
+            '確認',
+            'アカウントと個人データを削除します。元に戻せません。よろしいですか？',
+            [
+              { text: 'キャンセル', style: 'cancel' },
+              {
+                text: '削除',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await deleteMyAccountAction();
+                    Platform.OS === 'android'
+                      ? ToastAndroid.show('アカウントを削除しました', ToastAndroid.SHORT)
+                      : Alert.alert('完了', 'アカウントを削除しました');
+                    // 念のためクライアント側もサインアウト
+                    await onSignOut();
+                  } catch (e: any) {
+                    Alert.alert('エラー', e?.message ?? '削除に失敗しました');
+                  }
+                },
+              },
+            ]
+          );
+        }}
+      />
     </View>
     </TouchableWithoutFeedback>
   );
