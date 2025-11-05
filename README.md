@@ -98,7 +98,7 @@ service cloud.firestore {
 - Cloud Scheduler を設定（毎日 05:00 JST など）
   - HTTP/Callable で Functions を起動（認証はIAM/App Check等）
 - データモデル: `default_tasks` は以下を想定
-  - `title: string`, `daysOfWeek: number[]`, `order?: number`
+- `title: string`, `daysOfWeek: number[]`, `order?: number`
 
 7) 起動と確認
 - `npx expo start -c`
@@ -113,7 +113,87 @@ service cloud.firestore {
     - 「完了/未完了」でステータス切替
     - 反応: 既に付いたチップ（🙏/👍/🎉/❤️）のみ表示。なければ「＋」を押して選択→追加
   - プロフィール: 名前を編集して保存
-  - 設定: `householdId` を変更、ログアウト
+- 設定: `householdId` を変更、ログアウト
+
+## 追加: プライバシーポリシー（Hosting）と環境変数
+
+アプリ内の「プライバシーポリシー」ボタンは `EXPO_PUBLIC_PRIVACY_POLICY_URL` が設定されていると表示されます。
+
+1) URLの用意（Firebase Hosting 推奨）
+- 本リポジトリには Hosting 用のテンプレートを同梱
+  - テンプレート: `hosting/privacy/index.template.html`
+  - 生成物: `hosting/privacy/index.html`（Git管理外）
+  - 置換スクリプト: `scripts/prepare-privacy.js`（deploy 前に自動実行）
+- 連絡先メール/運営者名は環境変数で注入（Gitに載せない）
+  - `FAMLY_PRIVACY_CONTACT_EMAIL`（必須／本番）
+  - `FAMLY_OPERATOR_NAME`（任意。未設定なら該当セクション非表示）
+
+2) デプロイ（例: dev）
+```
+# 事前に .env を用意（.env.example を参照）
+FAMLY_PRIVACY_CONTACT_EMAIL=support@your.domain \
+FAMLY_OPERATOR_NAME="Your Company, Inc." \
+firebase deploy --only hosting --project <PROJECT_ID>
+```
+デプロイ後のURL例: `https://<PROJECT_ID>.web.app/privacy`
+
+3) アプリにURLを設定
+- ローカル: `.env` に `EXPO_PUBLIC_PRIVACY_POLICY_URL` を設定 → `npx expo start -c`
+- EAS(Build): Secrets に同名環境変数を登録
+
+### 環境変数まとめ
+- クライアント（公開可）
+  - `EXPO_PUBLIC_FIREBASE_API_KEY`, `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`, `EXPO_PUBLIC_FIREBASE_PROJECT_ID`, `EXPO_PUBLIC_FIREBASE_APP_ID`, `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+  - `EXPO_PUBLIC_PRIVACY_POLICY_URL`（設定時に設定画面へボタン表示）
+- Hosting（生成用／サーバー側）
+  - `FAMLY_PRIVACY_CONTACT_EMAIL`（必須）
+  - `FAMLY_OPERATOR_NAME`（任意）
+
+## Cloud Functions（Callable）
+
+本リポジトリ `functions/` には Callable を含む実装が同梱されています。
+
+- `deleteMyAccount`
+  - 役割: アカウント削除（householdからの除外、ユーザースタンプ削除、タスクの `completedBy*` 匿名化、`users/{uid}` 削除、Auth削除）
+- `joinByInvite`
+  - 役割: 招待コード参加（`households.members` へ追加、`users/{uid}.householdId` 更新）
+
+デプロイ（例: dev）
+```
+cd functions
+npm install
+npm run build
+firebase deploy --only functions --config ../firebase.json --project <PROJECT_ID>
+```
+
+アプリからの呼び出し
+- `src/application/account.ts` … `deleteMyAccount()` を呼び出し
+- `src/application/households.ts` … `joinByInviteCallable(code)` を優先的に使用
+
+## Firestore ルール（本番）
+
+`firestore.rules` をデプロイしてください（`isMember` 基準／stamps 自己削除許可を含む）。
+```
+firebase deploy --only firestore:rules --project <PROJECT_ID>
+```
+必要な複合インデックス（`tasks`）
+- `householdId (==), dateKey (==), createdAt (desc)`
+- `householdId (==), dateKey (==), title (==)`（重複防止チェック）
+
+## App Store 提出の準備（概要）
+
+- `app.json` に `ios.bundleIdentifier`（例: `com.example.famly`）を追加
+- EAS Secrets に `EXPO_PUBLIC_*` と `EXPO_PUBLIC_PRIVACY_POLICY_URL` を登録
+- TestFlight ビルド（例）
+```
+eas build -p ios
+# 送信
+eas submit -p ios --latest
+```
+- App Store Connect
+  - プライバシーポリシーURL設定、App Privacy回答（メール/名前、追跡なし）
+  - スクリーンショット、サポートURL、レビューノート（テストアカウントを記載）
+
 
 ## データモデル（抜粋）
 - `users/{userId}`: `name`, `email`, `householdId`

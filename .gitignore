@@ -48,3 +48,9 @@ yarn-error.*
 
 # Local temporary docs (not tracked)
 /docs/_local/
+
+# Generated Hosting files
+/hosting/privacy/index.html
+
+# Firebase CLI local state (do not version this)
+/.firebase/

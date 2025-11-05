@@ -1,6 +1,7 @@
 // デフォルトタスク（テンプレ）の一覧/編集ビュー。
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DefaultTask } from '../../domain/models';
 
 const dayLabels = ['日','月','火','水','木','金','土'];
@@ -15,82 +16,37 @@ export function DefaultTasksView({
   onDelete,
 }: {
   items: DefaultTask[];
-  onAdd: (title: string, days: number[]) => void;
+  onAdd: (title: string, days: number[]) => Promise<void> | void;
   onUpdateTitle: (id: string, title: string) => void;
   onUpdateDays: (id: string, days: number[]) => void;
   onMove: (id: string, direction: 'up' | 'down') => void;
   onDelete: (id: string) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [title, setTitle] = useState('');
   const [days, setDays] = useState<number[]>([]);
+  const [bottomOffset, setBottomOffset] = useState<number>(insets.bottom + 16);
   const toggleDay = (d: number) => setDays((prev) => prev.includes(d) ? prev.filter(x => x!==d) : [...prev, d]);
   const canAdd = title.trim().length > 0 && days.length > 0;
 
-  type Row = DefaultTask | { id: '__new__' };
-  const dataWithFooter: Row[] = useMemo(() => [...items, { id: '__new__' } as { id: '__new__' }], [items]);
+  useEffect(() => {
+    // Anchor to safe-area bottom; KeyboardAvoidingView in AppRoot handles keyboard shift.
+    setBottomOffset(insets.bottom + 16);
+  }, [insets.bottom]);
+
+  // 下部に固定フォームを置くため、リストは純粋に items のみを描画
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>デフォルトタスク</Text>
         <FlatList
-          data={dataWithFooter}
+          data={items}
           keyExtractor={(i) => i.id}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
-          contentContainerStyle={{ paddingBottom: 240 }}
+          contentContainerStyle={{ paddingBottom: (insets.bottom + 16) + 220 }}
           renderItem={({ item, index }) => {
-            if ((item as any).id === '__new__') {
-              return (
-                <View>
-                  <View style={{ height: 16 }} />
-                  <Text style={styles.sectionTitle}>新規追加</Text>
-                  <TextInput
-                    placeholder="タイトル"
-                    value={title}
-                    onChangeText={setTitle}
-                    style={styles.input}
-                    returnKeyType="done"
-                    onSubmitEditing={() => {
-                      const v = title.trim();
-                      if (!v || days.length === 0) return;
-                      onAdd(v, days);
-                      setTitle('');
-                      setDays([]);
-                      Keyboard.dismiss();
-                    }}
-                  />
-                  <View style={{ height: 8 }} />
-                  <View style={styles.daysRow}>
-                    {dayLabels.map((label, idx) => {
-                      const active = days.includes(idx);
-                      return (
-                        <TouchableOpacity
-                          key={idx}
-                          onPress={() => toggleDay(idx)}
-                          style={[styles.dayChip, active && styles.dayChipActive]}
-                        >
-                          <Text style={[styles.dayText, active && styles.dayTextActive]}>{label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <View style={{ height: 8 }} />
-                  <Button
-                    title="追加"
-                    disabled={!canAdd}
-                    onPress={() => {
-                      if (canAdd) {
-                        onAdd(title.trim(), days);
-                        setTitle('');
-                        setDays([]);
-                        Keyboard.dismiss();
-                      }
-                    }}
-                  />
-                </View>
-              );
-            }
             const task = item as DefaultTask;
             const isFirst = index === 0;
             const isLast = index === items.length - 1;
@@ -142,6 +98,66 @@ export function DefaultTasksView({
           ListEmptyComponent={<Text style={styles.muted}>まだデフォルトタスクがありません</Text>}
           style={{ alignSelf: 'stretch' }}
         />
+        {/* Bottom white backdrop to hide system gaps above keyboard */}
+        <View pointerEvents="none" style={[styles.bottomOverlay, { height: bottomOffset }]} />
+        {/* Bottom fixed new-item form */}
+        <View style={[styles.fixedBarWrapper, { bottom: bottomOffset }]}>
+          <View style={styles.fixedBar}>
+            <Text style={[styles.sectionTitle, { marginBottom: 8 }]}>新規追加</Text>
+            <TextInput
+              placeholder="タイトル"
+              value={title}
+              onChangeText={setTitle}
+              style={[styles.input, { marginBottom: 8 }]}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                (async () => {
+                  const v = title.trim();
+                  if (!v || days.length === 0) return;
+                  try {
+                    await Promise.resolve(onAdd(v, days));
+                    setTitle('');
+                    setDays([]);
+                    Keyboard.dismiss();
+                  } catch (e: any) {
+                    Alert.alert('エラー', e?.message ?? '追加に失敗しました');
+                  }
+                })();
+              }}
+            />
+            <View style={[styles.daysRow, { marginBottom: 8 }]}>
+              {dayLabels.map((label, idx) => {
+                const active = days.includes(idx);
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    onPress={() => toggleDay(idx)}
+                    style={[styles.dayChip, active && styles.dayChipActive]}
+                  >
+                    <Text style={[styles.dayText, active && styles.dayTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Button
+              title="追加"
+              disabled={!canAdd}
+              onPress={() => {
+                (async () => {
+                  if (!canAdd) return;
+                  try {
+                    await Promise.resolve(onAdd(title.trim(), days));
+                    setTitle('');
+                    setDays([]);
+                    Keyboard.dismiss();
+                  } catch (e: any) {
+                    Alert.alert('エラー', e?.message ?? '追加に失敗しました');
+                  }
+                })();
+              }}
+            />
+          </View>
+        </View>
       </View>
     </TouchableWithoutFeedback>
   );
@@ -159,4 +175,26 @@ const styles = StyleSheet.create({
   dayText: { color: '#555' },
   dayTextActive: { color: '#2453ff', fontWeight: '600' },
   muted: { color: '#888' },
+  bottomOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+  },
+  fixedBarWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+  },
+  fixedBar: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 12,
+  },
 });
