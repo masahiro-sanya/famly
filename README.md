@@ -149,6 +149,32 @@ firebase deploy --only hosting --project <PROJECT_ID>
   - `FAMLY_PRIVACY_CONTACT_EMAIL`（必須）
   - `FAMLY_OPERATOR_NAME`（任意）
 
+### 環境変数の取得方法（どこで取る？）
+
+Firebase（EXPO_PUBLIC_FIREBASE_*）
+- 取得元: Firebase Console → 歯車（プロジェクトの設定）→ 一般 → 下部「マイアプリ」の Web アプリ（</>）を選択 → 「SDK の設定と構成」→ Config
+- 対応表:
+  - `apiKey` → `EXPO_PUBLIC_FIREBASE_API_KEY`
+  - `authDomain` → `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
+  - `projectId` → `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
+  - `appId` → `EXPO_PUBLIC_FIREBASE_APP_ID`
+  - `messagingSenderId` → `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- 補足: これらはクライアント公開前提の値（秘密鍵ではありません）
+
+プライバシーポリシーURL（EXPO_PUBLIC_PRIVACY_POLICY_URL）
+- 取得元: 自身で用意した https の公開URL
+  - 本リポジトリの手順で Firebase Hosting にデプロイしている場合 → `https://<PROJECT_ID>.web.app/privacy`
+  - 独自ドメイン/Notion/GitHub Pages 等でも可（https 推奨）
+
+設定場所（開発/本番）
+- ローカル開発: リポジトリ直下の `.env` に追記 → `npx expo start -c`
+- EAS（ビルド時に注入）: Expo Dashboard → Project → Environment Variables で登録（または CLI）
+  - 例: `eas secret:push --name EXPO_PUBLIC_PRIVACY_POLICY_URL --value https://<PROJECT_ID>.web.app/privacy`
+
+確認方法
+- 開発: 一時的に `console.log(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID)` などで確認 → 表示されない場合はキャッシュクリア（`npx expo start -c`）
+- アプリ: 設定タブに「プライバシーポリシー」ボタンが出てリンクが開けば URL は注入済み
+
 ## Cloud Functions（Callable）
 
 本リポジトリ `functions/` には Callable を含む実装が同梱されています。
@@ -169,6 +195,26 @@ firebase deploy --only functions --config ../firebase.json --project <PROJECT_ID
 アプリからの呼び出し
 - `src/application/account.ts` … `deleteMyAccount()` を呼び出し
 - `src/application/households.ts` … `joinByInviteCallable(code)` を優先的に使用
+
+## EAS ビルド（開発/本番）
+
+eas.json にプロファイルを用意しています。目的に応じて使い分けてください。
+
+- 開発（Dev Client / 内部配布）
+  - iOS: `eas build -p ios --profile development`
+  - Android: `eas build -p android --profile development`
+  - チャンネル: `development`
+
+- 本番（ストア提出用ビルド）
+  - iOS: `eas build -p ios --profile production`
+  - Android: `eas build -p android --profile production`
+  - 提出（iOS）: `eas submit -p ios --latest`
+  - チャンネル: `production`
+
+注意
+- iOS は提出のたびに `app.json` の `ios.buildNumber` を増やしてください。
+- Android は `android.versionCode` を増やしてください。
+- ビルド前に EAS Secrets に `EXPO_PUBLIC_*` と `EXPO_PUBLIC_PRIVACY_POLICY_URL` を登録してください。
 
 ## Firestore ルール（本番）
 
