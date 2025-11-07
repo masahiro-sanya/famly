@@ -216,6 +216,31 @@ eas.json にプロファイルを用意しています。目的に応じて使�
 - Android は `android.versionCode` を増やしてください。
 - ビルド前に EAS Secrets に `EXPO_PUBLIC_*` と `EXPO_PUBLIC_PRIVACY_POLICY_URL` を登録してください。
 
+## Firebase デプロイ（推奨手順）
+
+`firebase.json` に Functions/Hosting の `predeploy` を設定済みです。基本は次のコマンドだけで OK です。
+
+一括デプロイ
+```
+# 開発（.firebaserc の dev エイリアスを使用）
+firebase deploy --project dev --only "firestore:rules,functions,hosting"
+
+# 本番（prod エイリアス）
+firebase deploy --project prod --only "firestore:rules,functions,hosting"
+```
+
+個別デプロイ
+```
+firebase deploy --project dev --only firestore:rules
+firebase deploy --project prod --only functions
+firebase deploy --project dev --only hosting
+```
+
+環境変数の読み込み（Hosting の privacy 生成用）
+- `scripts/prepare-privacy.js` が predeploy で `.env`, `.env.local`, `.env.production`, `.env.prod` を自動読込します。
+- 開発: ルートの `.env` に `FAMLY_PRIVACY_CONTACT_EMAIL` 等を設定
+- 本番: `.env.production` か `.env.prod` を作成して値を設定
+
 ## Firestore ルール（本番）
 
 `firestore.rules` をデプロイしてください（`isMember` 基準／stamps 自己削除許可を含む）。

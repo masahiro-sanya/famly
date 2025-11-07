@@ -34,6 +34,7 @@ function main() {
   loadEnv('.env');
   loadEnv('.env.local');
   loadEnv('.env.production');
+  loadEnv('.env.prod');
   const contact = process.env.FAMLY_PRIVACY_CONTACT_EMAIL || 'support@example.com';
   const operator = process.env.FAMLY_OPERATOR_NAME || '';
   let html = fs.readFileSync(tplPath, 'utf8');
