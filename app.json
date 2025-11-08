@@ -15,7 +15,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.s1msys.famly",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.s1msys.famly",
@@ -35,6 +38,12 @@
         "projectId": "43f2ee32-4a42-410a-ad17-f98a144426f0"
       }
     },
-    "owner": "masahiro_sanya"
+    "owner": "masahiro_sanya",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/43f2ee32-4a42-410a-ad17-f98a144426f0"
+    }
   }
 }
