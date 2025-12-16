@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Text, TextInput, View, StyleSheet } from 'react-native';
-import { signIn, signUp } from '../../application/auth';
+import { Button, Text, TextInput, View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { signIn, signUp, resetPassword } from '../../application/auth';
 
 export function AuthForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   const canSubmit = useMemo(() => email.length > 3 && password.length >= 6, [email, password]);
+  const canReset = useMemo(() => email.length > 3, [email]);
 
   const handleSignIn = async () => {
     try {
@@ -24,6 +26,23 @@ export function AuthForm() {
       await signUp(email.trim(), password);
     } catch (e: any) {
       setError(e?.message ?? 'Sign up failed');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    try {
+      setError(null);
+      setIsResetting(true);
+      await resetPassword(email.trim());
+      Alert.alert(
+        'メール送信完了',
+        'パスワードリセット用のメールを送信しました。メールをご確認ください。',
+        [{ text: 'OK' }]
+      );
+    } catch (e: any) {
+      setError(e?.message ?? 'パスワードリセットに失敗しました');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -51,6 +70,15 @@ export function AuthForm() {
         <View style={{ width: 12 }} />
         <Button title="新規登録" onPress={handleSignUp} disabled={!canSubmit} />
       </View>
+      <TouchableOpacity
+        onPress={handleResetPassword}
+        disabled={!canReset || isResetting}
+        style={styles.resetLink}
+      >
+        <Text style={[styles.resetText, (!canReset || isResetting) && styles.resetTextDisabled]}>
+          {isResetting ? '送信中...' : 'パスワードを忘れた方はこちら'}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -74,6 +102,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    marginBottom: 12,
   },
   row: {
     flexDirection: 'row',
@@ -81,5 +110,17 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   errorText: { color: '#b00020', marginTop: 8 },
+  resetLink: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  resetText: {
+    color: '#1976d2',
+    fontSize: 14,
+  },
+  resetTextDisabled: {
+    color: '#999',
+  },
 });
 

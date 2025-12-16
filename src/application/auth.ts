@@ -5,6 +5,7 @@ import {
   User,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as fbSignOut,
 } from 'firebase/auth';
@@ -60,6 +61,10 @@ export async function signUp(email: string, password: string) {
 
 export async function signOut() {
   await fbSignOut(auth);
+}
+
+export async function resetPassword(email: string) {
+  await sendPasswordResetEmail(auth, email);
 }
 
 export async function updateProfileName(userId: string, name: string) {
