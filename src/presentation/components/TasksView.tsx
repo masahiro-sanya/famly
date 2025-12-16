@@ -29,8 +29,6 @@ export function TasksView({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
-  const [thanksDisabled, setThanksDisabled] = useState<Record<string, boolean>>({});
-  const [reactDisabled, setReactDisabled] = useState<Record<string, boolean>>({});
   const [pickerFor, setPickerFor] = useState<string | null>(null); // taskId を保持（モーダル開閉）
   const reactions = useMemo(() => (
     [

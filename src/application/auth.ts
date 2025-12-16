@@ -51,27 +51,27 @@ export function useAuthState() {
   return { user, profile } as const;
 }
 
-export async function signIn(email: string, password: string) {
+export async function signIn(email: string, password: string): Promise<void> {
   await signInWithEmailAndPassword(auth, email, password);
 }
 
-export async function signUp(email: string, password: string) {
+export async function signUp(email: string, password: string): Promise<void> {
   await createUserWithEmailAndPassword(auth, email, password);
 }
 
-export async function signOut() {
+export async function signOut(): Promise<void> {
   await fbSignOut(auth);
 }
 
-export async function resetPassword(email: string) {
+export async function resetPassword(email: string): Promise<void> {
   await sendPasswordResetEmail(auth, email);
 }
 
-export async function updateProfileName(userId: string, name: string) {
+export async function updateProfileName(userId: string, name: string): Promise<void> {
   await updateDoc(doc(db, 'users', userId), { name });
 }
 
-export async function updateHouseholdId(userId: string, householdId: string) {
+export async function updateHouseholdId(userId: string, householdId: string): Promise<void> {
   await updateDoc(doc(db, 'users', userId), { householdId });
 }
 
