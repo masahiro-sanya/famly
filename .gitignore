@@ -54,3 +54,7 @@ yarn-error.*
 
 # Firebase CLI local state (do not version this)
 /.firebase/
+
+# AI/IDE tools
+.claude/
+.serena/
