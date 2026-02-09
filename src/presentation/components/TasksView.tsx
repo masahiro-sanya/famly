@@ -1,13 +1,10 @@
 // タスク一覧。編集/削除/完了トグルと、Slack風リアクションを提供。
 import React, { useMemo, useState } from 'react';
-import { Button, FlatList, StyleSheet, Text, TextInput, View, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { FlatList, View, Pressable } from 'react-native';
+import { Button, Card, Chip, Divider, IconButton, Modal, Portal, Text, TextInput, useTheme } from 'react-native-paper';
 import { Task } from '../../domain/models';
+import type { FamlyTheme } from '../theme';
 
-/**
- * タスク一覧ビュー。
- * - onToggleStatus: 完了/未完了トグル
- * - onThanks/onReact: リアクションのトグル追加/削除
- */
 export function TasksView({
   currentUserId,
   tasks,
@@ -27,9 +24,10 @@ export function TasksView({
   onThanks?: (id: string) => Promise<'added' | 'removed' | void>;
   onReact?: (id: string, type: string) => Promise<'added' | 'removed' | void>;
 }) {
+  const { colors } = useTheme<FamlyTheme>();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
-  const [pickerFor, setPickerFor] = useState<string | null>(null); // taskId を保持（モーダル開閉）
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
   const reactions = useMemo(() => (
     [
       { type: 'thanks', emoji: '🙏' },
@@ -40,136 +38,178 @@ export function TasksView({
       { type: 'sparkles', emoji: '✨' },
     ] as const
   ), []);
+
+  const styles = useMemo(() => ({
+    card: { alignSelf: 'stretch' as const, borderRadius: 16 },
+    sectionTitle: { fontWeight: '600' as const, marginBottom: 8 },
+    editInput: { marginBottom: 8, backgroundColor: colors.inputBackground },
+    editRow: { flexDirection: 'row' as const, gap: 8, alignItems: 'center' as const },
+    listItem: { paddingVertical: 8 },
+    listItemDone: { backgroundColor: colors.doneBackground, borderRadius: 8, paddingHorizontal: 8 },
+    itemRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 2 },
+    listTitleDone: { textDecorationLine: 'line-through' as const, color: colors.textOnDone },
+    metaDone: { color: colors.textMuted },
+    reactionsRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: 6, marginTop: 6 },
+    chip: { height: 32 },
+    chipText: { fontSize: 13 },
+    modalSheet: { backgroundColor: colors.modalBackground, padding: 20, margin: 24, borderRadius: 16 },
+    emojiGrid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 16, justifyContent: 'center' as const },
+    emojiBtn: { width: 56, height: 56, borderRadius: 28, alignItems: 'center' as const, justifyContent: 'center' as const, backgroundColor: colors.emojiButtonBackground },
+    muted: { color: colors.textMuted, textAlign: 'center' as const, marginTop: 16 },
+  }), [colors]);
+
   return (
     <>
-    <View style={styles.card}>
-      <Text style={styles.sectionTitle}>履歴</Text>
-      <FlatList
-        data={tasks}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 180 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        renderItem={({ item }) => {
-          const isEditing = editingId === item.id;
-          if (isEditing) {
-            return (
-              <View style={styles.listItem}>
-                <TextInput
-                  style={[styles.input, { marginBottom: 8 }]}
-                  value={editingTitle}
-                  onChangeText={setEditingTitle}
-                />
-                <View style={styles.row}>
-                  <Button
-                    title="保存"
-                    onPress={() => {
-                      const v = editingTitle.trim();
-                      if (!v) return;
-                      onUpdate(item.id, v);
-                      setEditingId(null);
-                      setEditingTitle('');
-                      onEditingChange?.(false);
-                    }}
-                  />
-                  <View style={{ width: 12 }} />
-                  <Button
-                    title="キャンセル"
-                    onPress={() => {
-                      setEditingId(null);
-                      setEditingTitle('');
-                      onEditingChange?.(false);
-                    }}
-                  />
-                </View>
-              </View>
-            );
-          }
-          return (
-            <View style={[styles.listItem, item.status === 'done' && styles.listItemDone]}>
-              <View style={styles.itemRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.listTitle, item.status === 'done' && styles.listTitleDone]}>{item.title}</Text>
-                  {item.status === 'done' && (
-                    <Text style={[styles.listMeta, styles.listMetaDone]}>
-                      {item.completedByName ?? (item.completedByUserId === currentUserId ? 'あなた' : '不明なユーザー')}
-                    </Text>
-                  )}
-                  {item.status === 'done' && item.completedAt ? (
-                    <Text style={styles.listMeta}>完了 {new Date(item.completedAt.toDate()).toLocaleString()}</Text>
-                  ) : null}
-                </View>
-                <View style={styles.actions}>
-                  <Button
-                    title={item.status === 'done' ? '未完了' : '完了'}
-                    onPress={() => onToggleStatus?.(item.id, item.status === 'done' ? 'pending' : 'done')}
-                  />
-                  <View style={{ width: 8 }} />
-                  <View style={{ width: 8 }} />
-                  <Button
-                    title="編集"
-                    onPress={() => {
-                      setEditingId(item.id);
-                      setEditingTitle(item.title);
-                      onEditingChange?.(true);
-                    }}
-                  />
-                  <View style={{ width: 8 }} />
-                  <Button title="削除" color="#b00020" onPress={() => onDelete(item.id)} />
-                </View>
-              </View>
-              {/* Reactions line: wraps to new line like Slack */}
-              <View style={styles.reactionsRow}>
-                {((item.reactions?.thanks ?? item.thanksCount ?? 0) > 0) && (
-                  <TouchableOpacity
-                    onPress={async () => { await onThanks?.(item.id); }}
-                    style={styles.pill}
-                  >
-                    <Text style={styles.pillText}>🙏{item.reactions?.thanks ?? item.thanksCount ?? 0}</Text>
-                  </TouchableOpacity>
-                )}
-                {reactions.filter(r => r.type !== 'thanks').map((r) => {
-                  const count = item.reactions?.[r.type] ?? 0;
-                  if (count > 0) {
-                    return (
-                      <TouchableOpacity
-                        key={r.type}
-                        onPress={async () => { await onReact?.(item.id, r.type); }}
-                        style={styles.pill}
+      <Card style={styles.card} mode="outlined">
+        <Card.Content>
+          <Text variant="titleMedium" style={styles.sectionTitle}>履歴</Text>
+          <FlatList
+            data={tasks}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingBottom: 340 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            ItemSeparatorComponent={() => <Divider style={{ marginVertical: 4 }} />}
+            renderItem={({ item }) => {
+              const isEditing = editingId === item.id;
+              if (isEditing) {
+                return (
+                  <View style={styles.listItem}>
+                    <TextInput
+                      mode="outlined"
+                      value={editingTitle}
+                      onChangeText={setEditingTitle}
+                      style={styles.editInput}
+                      dense
+                    />
+                    <View style={styles.editRow}>
+                      <Button
+                        mode="contained"
+                        compact
+                        onPress={() => {
+                          const v = editingTitle.trim();
+                          if (!v) return;
+                          onUpdate(item.id, v);
+                          setEditingId(null);
+                          setEditingTitle('');
+                          onEditingChange?.(false);
+                        }}
                       >
-                        <Text style={styles.pillText}>{r.emoji}{count}</Text>
-                      </TouchableOpacity>
-                    );
-                  }
-                  return null;
-                })}
-                <TouchableOpacity
-                  onPress={() => setPickerFor(item.id)}
-                  style={[styles.addReaction, { marginLeft: 6 }]}
-                >
-                  <Text style={styles.addReactionText}>＋</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        }}
-        ListEmptyComponent={<Text style={styles.muted}>まだ記録がありません</Text>}
-        style={{ alignSelf: 'stretch' }}
-      />
-    </View>
-    {/* Reaction Picker Modal (Slack-like) */}
-    <Modal
-      transparent
-      visible={!!pickerFor}
-      animationType="fade"
-      onRequestClose={() => setPickerFor(null)}
-    >
-      <Pressable style={styles.modalBackdrop} onPress={() => setPickerFor(null)}>
-        <View style={styles.modalSheet}>
-          <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>リアクションを追加</Text>
+                        保存
+                      </Button>
+                      <Button
+                        mode="text"
+                        compact
+                        onPress={() => {
+                          setEditingId(null);
+                          setEditingTitle('');
+                          onEditingChange?.(false);
+                        }}
+                      >
+                        キャンセル
+                      </Button>
+                    </View>
+                  </View>
+                );
+              }
+              return (
+                <View style={[styles.listItem, item.status === 'done' && styles.listItemDone]}>
+                  <View style={styles.itemRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        variant="bodyLarge"
+                        style={item.status === 'done' ? styles.listTitleDone : undefined}
+                      >
+                        {item.title}
+                      </Text>
+                      {item.status === 'done' && (
+                        <Text variant="bodySmall" style={styles.metaDone}>
+                          {item.completedByName ?? (item.completedByUserId === currentUserId ? 'あなた' : '不明なユーザー')}
+                          {item.completedAt ? `  ${new Date(item.completedAt.toDate()).toLocaleString()}` : ''}
+                        </Text>
+                      )}
+                    </View>
+                    <IconButton
+                      icon={item.status === 'done' ? 'undo-variant' : 'check'}
+                      mode={item.status === 'done' ? 'outlined' : 'contained'}
+                      size={20}
+                      onPress={() => onToggleStatus?.(item.id, item.status === 'done' ? 'pending' : 'done')}
+                      containerColor={item.status === 'done' ? undefined : colors.primary}
+                      iconColor={item.status === 'done' ? colors.textMuted : colors.onPrimary}
+                      style={{ margin: 0 }}
+                    />
+                    <IconButton
+                      icon="pencil"
+                      size={18}
+                      onPress={() => {
+                        setEditingId(item.id);
+                        setEditingTitle(item.title);
+                        onEditingChange?.(true);
+                      }}
+                      style={{ margin: 0 }}
+                    />
+                    <IconButton
+                      icon="delete"
+                      size={18}
+                      iconColor={colors.dangerText}
+                      onPress={() => onDelete(item.id)}
+                      style={{ margin: 0 }}
+                    />
+                  </View>
+                  <View style={styles.reactionsRow}>
+                    {((item.reactions?.thanks ?? item.thanksCount ?? 0) > 0) && (
+                      <Chip
+                        compact
+                        onPress={async () => { await onThanks?.(item.id); }}
+                        style={styles.chip}
+                        textStyle={styles.chipText}
+                      >
+                        🙏{item.reactions?.thanks ?? item.thanksCount ?? 0}
+                      </Chip>
+                    )}
+                    {reactions.filter(r => r.type !== 'thanks').map((r) => {
+                      const count = item.reactions?.[r.type] ?? 0;
+                      if (count > 0) {
+                        return (
+                          <Chip
+                            key={r.type}
+                            compact
+                            onPress={async () => { await onReact?.(item.id, r.type); }}
+                            style={styles.chip}
+                            textStyle={styles.chipText}
+                          >
+                            {r.emoji}{count}
+                          </Chip>
+                        );
+                      }
+                      return null;
+                    })}
+                    <IconButton
+                      icon="plus-circle-outline"
+                      size={20}
+                      onPress={() => setPickerFor(item.id)}
+                      style={{ margin: 0 }}
+                    />
+                  </View>
+                </View>
+              );
+            }}
+            ListEmptyComponent={<Text style={styles.muted}>まだ記録がありません</Text>}
+            style={{ alignSelf: 'stretch' }}
+          />
+        </Card.Content>
+      </Card>
+
+      <Portal>
+        <Modal
+          visible={!!pickerFor}
+          onDismiss={() => setPickerFor(null)}
+          contentContainerStyle={styles.modalSheet}
+        >
+          <Text variant="titleSmall" style={{ marginBottom: 12 }}>リアクションを追加</Text>
           <View style={styles.emojiGrid}>
             {reactions.map((r) => (
-              <TouchableOpacity
+              <Pressable
                 key={r.type}
                 onPress={async () => {
                   if (!pickerFor) return;
@@ -182,118 +222,12 @@ export function TasksView({
                 }}
                 style={styles.emojiBtn}
               >
-                <Text style={{ fontSize: 24 }}>{r.emoji}</Text>
-              </TouchableOpacity>
+                <Text style={{ fontSize: 28 }}>{r.emoji}</Text>
+              </Pressable>
             ))}
           </View>
-        </View>
-      </Pressable>
-    </Modal>
-  </>
+        </Modal>
+      </Portal>
+    </>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    alignSelf: 'stretch',
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 12,
-    padding: 16,
-    paddingBottom: 24,
-    position: 'relative',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  
-  listItem: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  listItemDone: {
-    backgroundColor: '#f2f2f2',
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  reactionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-  },
-  pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#f8f8f8',
-  },
-  pillText: { fontSize: 14 },
-  listTitleDone: { textDecorationLine: 'line-through', color: '#666' },
-  listMetaDone: { color: '#888' },
-  addReaction: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  addReactionText: { fontSize: 18, lineHeight: 18, color: '#555' },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  emojiBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
-    backgroundColor: '#fafafa',
-  },
-  listTitle: { fontSize: 16 },
-  listMeta: { color: '#666', fontSize: 12 },
-  muted: { color: '#888' },
-});
