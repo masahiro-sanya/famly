@@ -1,5 +1,5 @@
 // UI用の極小Zustandストア（タブ状態/編集中フラグのみ）。
-import create from 'zustand';
+import { create } from 'zustand/react';
 
 type Tab = 'tasks' | 'defaults' | 'profile' | 'settings';
 
