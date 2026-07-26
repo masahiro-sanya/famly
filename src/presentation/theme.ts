@@ -161,6 +161,3 @@ export const darkTheme: FamlyTheme = {
     emojiButtonBackground: '#53433F',
   },
 };
-
-// 後方互換: 既存の `theme` インポートをそのまま使えるように
-export const theme = lightTheme;

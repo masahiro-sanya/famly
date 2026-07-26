@@ -4,7 +4,7 @@ import { KeyboardAvoidingView, Platform, StyleSheet, View, useColorScheme } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Appbar, Button, Provider as PaperProvider, Text } from 'react-native-paper';
-import { useAuthState, signOut, updateHouseholdId, updateProfileName } from '../application/auth';
+import { useAuthState, signOut, updateProfileName } from '../application/auth';
 import { addTask, useTasks, updateTaskTitle, deleteTask, updateTaskStatus, addThanksStamp, addReaction } from '../application/tasks';
 import { AuthForm } from './components/AuthForm';
 import { TasksView } from './components/TasksView';
@@ -32,10 +32,10 @@ export default function AppRoot() {
   const currentHousehold = useHousehold(profile?.householdId);
   const members = useHouseholdMembers(profile?.householdId);
   const defaults = useDefaultTasks(profile?.householdId);
-  const tab = useUIStore((s: any) => s.tab);
-  const setTab = useUIStore((s: any) => s.setTab);
-  const isEditingTask = useUIStore((s: any) => s.isEditingTask);
-  const setIsEditingTask = useUIStore((s: any) => s.setEditingTask);
+  const tab = useUIStore((s) => s.tab);
+  const setTab = useUIStore((s) => s.setTab);
+  const isEditingTask = useUIStore((s) => s.isEditingTask);
+  const setIsEditingTask = useUIStore((s) => s.setEditingTask);
 
   const dynamicStyles = useMemo(() => ({
     container: {

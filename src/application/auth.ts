@@ -71,10 +71,6 @@ export async function updateProfileName(userId: string, name: string): Promise<v
   await updateDoc(doc(db, 'users', userId), { name });
 }
 
-export async function updateHouseholdId(userId: string, householdId: string): Promise<void> {
-  await updateDoc(doc(db, 'users', userId), { householdId });
-}
-
 // Firestore: ドキュメントがなければ set、あれば update。
 async function updateDocOrSet(ref: ReturnType<typeof doc>, data: Record<string, any>) {
   const snap = await getDoc(ref);
