@@ -8,7 +8,7 @@
 - 完了チェック: done/pending をトグル
 - リアクション: 🙏/👍/🎉/❤️ で反応（1人1タスク1種類1回）
 - 共有: `householdId` 単位で履歴共有（初期値はユーザーID）
-- 最小UI: React Native 標準コンポーネントで実装（Paper導入は任意）
+- UI: React Native Paper（Material Design）
 
 ## セットアップ
 
@@ -19,17 +19,8 @@
 npm install
 ```
 
-2.1) UI/状態管理（任意だが推奨）
-```
-# Paper（Expo環境での推奨インストール）
-npx expo install react-native-paper react-native-safe-area-context react-native-gesture-handler react-native-reanimated react-native-vector-icons
-
-# Zustand（状態管理）
-npm i zustand
-
-# Auth永続化（推奨）
-npx expo install @react-native-async-storage/async-storage
-```
+UI(React Native Paper)・状態管理(Zustand)・Auth永続化(AsyncStorage)は
+`package.json` に入っているので、追加インストールは不要です。
 
 3) Firebase 設定（秘密情報はコミットしない）
 - `.env.example` を `.env` にコピーし、値を設定
@@ -69,36 +60,26 @@ npx expo start
 - Authentication → サインイン方法 → 「メール/パスワード」を有効化
 - 必要に応じてテストユーザーを作成
 
-4) Firestore を作成（開発ルール）
+4) Firestore を作成し、リポジトリのルールを適用
 - Firestore Database → データベースを作成（例: `asia-northeast1`）
-- ルールタブで以下に置換して公開（開発用。公開前に強化）
+- Console でルールを手書きせず、リポジトリの `firestore.rules` をデプロイする
 ```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{db}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}
+firebase deploy --only firestore:rules --project <PROJECT_ID>
 ```
+  - Console のテンプレート（`allow read, write: if request.auth != null;`）は
+    全ユーザーが全データを読み書きできてしまうため、開発用でも使わない
 
-5) 複合インデックスを作成（tasks 用）
-- Firestore → インデックス → 複合 → 追加
-- コレクション: `tasks`
-- フィールド:
-  - `householdId`（昇順/==）
-  - `dateKey`（昇順/==）
-  - `createdAt`（降順）
-- ステータスが「有効」になるまで 1–3 分待機（エラーメッセージのリンクから作成でもOK）
+5) インデックスを適用
+```
+firebase deploy --only firestore:indexes --project <PROJECT_ID>
+```
+- 内容は `firestore.indexes.json` を参照
+- ステータスが「有効」になるまで 1–3 分かかる
 
-6) デフォルトタスク自動生成（任意: 公開版では推奨）
-- Firebase Functions を用意（別リポジトリ/フォルダ可）
-  - `default_tasks/{householdId}/items` を参照し、当日分を `tasks` に生成
-- Cloud Scheduler を設定（毎日 05:00 JST など）
-  - HTTP/Callable で Functions を起動（認証はIAM/App Check等）
-- データモデル: `default_tasks` は以下を想定
-- `title: string`, `daysOfWeek: number[]`, `order?: number`
+6) デフォルトタスク自動生成
+- `functions/` に実装済み（`default_tasks/{householdId}/items` から当日分を `tasks` に生成）
+- Cloud Scheduler ジョブは Functions のデプロイ時に自動作成される（05:00 JST）
+- データモデル: `title: string`, `daysOfWeek: number[]`, `order?: number`
 
 7) 起動と確認
 - `npx expo start -c`
@@ -113,7 +94,7 @@ service cloud.firestore {
     - 「完了/未完了」でステータス切替
     - 反応: 既に付いたチップ（🙏/👍/🎉/❤️）のみ表示。なければ「＋」を押して選択→追加
   - プロフィール: 名前を編集して保存
-- 設定: `householdId` を変更、ログアウト
+  - 設定: 家族の作成／招待コードでの参加・再発行、世帯名の変更、退出、ログアウト、アカウント削除
 
 ## 追加: プライバシーポリシー（Hosting）と環境変数
 
@@ -180,9 +161,14 @@ Firebase（EXPO_PUBLIC_FIREBASE_*）
 本リポジトリ `functions/` には Callable を含む実装が同梱されています。
 
 - `deleteMyAccount`
-  - 役割: アカウント削除（householdからの除外、ユーザースタンプ削除、タスクの `completedBy*` 匿名化、`users/{uid}` 削除、Auth削除）
+  - 役割: アカウント削除。共有世帯のメンバーから外し、本人のスタンプを削除、
+    個人世帯のタスク/テンプレを削除、共有世帯のタスクは残して本人の情報のみ匿名化、
+    `users/{uid}` と Auth ユーザーを削除
 - `joinByInvite`
-  - 役割: 招待コード参加（`households.members` へ追加、`users/{uid}.householdId` 更新）
+  - 役割: 招待コード参加（旧世帯の `members` から外し、新世帯へ追加、`users/{uid}.householdId` 更新）
+  - クライアントは他世帯の `households` を読めないため、参加経路はこの Callable のみ
+- `generateDailyTasksNow`
+  - 役割: 当日分タスクの手動生成（検証用）。生成先は呼び出し元自身の世帯に限定
 
 デプロイ（例: dev）
 ```
@@ -194,7 +180,7 @@ firebase deploy --only functions --config ../firebase.json --project <PROJECT_ID
 
 アプリからの呼び出し
 - `src/application/account.ts` … `deleteMyAccount()` を呼び出し
-- `src/application/households.ts` … `joinByInviteCallable(code)` を優先的に使用
+- `src/application/households.ts` … `joinByInviteCallable(code)` を使用
 
 ## EAS ビルド（開発/本番）
 
@@ -247,9 +233,10 @@ firebase deploy --project dev --only hosting
 ```
 firebase deploy --only firestore:rules --project <PROJECT_ID>
 ```
-必要な複合インデックス（`tasks`）
-- `householdId (==), dateKey (==), createdAt (desc)`
-- `householdId (==), dateKey (==), title (==)`（重複防止チェック）
+必要なインデックス（`firestore.indexes.json`）
+- 複合（`tasks`）: `householdId (==), dateKey (==), createdAt (desc)`
+- 単一フィールド（`stamps.fromUserId`）: COLLECTION_GROUP スコープ
+  - `deleteMyAccount` の `collectionGroup('stamps')` クエリで必要
 
 ## App Store 提出の準備（概要）
 
@@ -325,30 +312,36 @@ firebase deploy --only functions --config ../firebase.json --project famly-dev-4
 ## Firestore ルール（MVP本番想定）
 
 このリポジトリに `firestore.rules` を同梱しています。内容は次の方針です。
-- users: 自分のみ read/update、初回 create も本人のみ
-- households: MVPの都合で read は認証ユーザーに許可（招待コード検索のため）。write はメンバー
+- users: 自分のみ read/update、初回 create も本人のみ（同一世帯メンバーの read は可）
+- households: read/write ともにメンバーのみ。参加は Callable `joinByInvite` 経由
 - default_tasks/items: householdメンバーのみ read/write
 - tasks: 自分の household のみ read、create は自分の householdId、update/delete も household 内に限定
-- tasks/stamps: 本人のみ create（fromUserId==uid）、update/delete は不可
+- tasks/stamps: 本人のみ create（fromUserId==uid）、削除は自分のスタンプのみ、update は不可
 
 適用コマンド（dev例）:
 ```
 firebase deploy --only firestore:rules --project famly-dev-41b50
 ```
 
-注意:
-- 招待コード参加を完全に閉じたい場合は、households の read をメンバー限定にする必要があります（その場合は参加処理をCloud Functions/Callableに移行してください）。
-
 ## インデックス（必須）
+
+`firestore.indexes.json` に定義済み。`firebase deploy --only firestore:indexes` で適用する。
 
 - 複合（tasks / 当日一覧）
   - householdId (==), dateKey (==), createdAt (desc)
-- 複合（tasks / 重複防止チェック）
-  - householdId (==), dateKey (==), title (==)
-  - 生成前存在確認クエリで使用
+- 単一フィールド（stamps / fromUserId・COLLECTION_GROUP スコープ）
+  - `deleteMyAccount` のスタンプ削除で使用
 
+## テスト / CI
 
-Firestore セキュリティルールは最小権限で運用してください。クライアントのみの公開リポジトリにはルールは含みません。
+```
+npm run typecheck && npm test              # アプリ
+cd functions && npm run typecheck && npm test && npm run build
+```
+
+- `.github/workflows/ci.yml` が push(main/develop) と PR で上記を実行する
+- 現状のテスト対象は JST 日付ユーティリティ（`src/lib/date.test.ts` / `functions/src/lib/date.test.ts`）
+- 方針は `.claude/rules/testing.md` を参照
 
 ## 開発メモ / アーキテクチャ
 - レイヤ構成（簡易クリーンアーキテクチャ）
@@ -359,8 +352,10 @@ Firestore セキュリティルールは最小権限で運用してください�
 - UI ライブラリ: React Native Paper（`AppRoot.tsx` を `PaperProvider` でラップ）
 - 状態管理: Zustand（`src/application/store.ts` の UI ストア）
 - Auth永続化: `src/infrastructure/firebaseClient.ts` で React Native 環境は `initializeAuth(getReactNativePersistence(AsyncStorage))` を使用（Webは `getAuth`）
-- ルートの `App.tsx` は薄いラッパーで `src/presentation/AppRoot` を描画
-- UI: 依存追加を避け標準コンポーネントで構成（Paper導入は任意）
+- ルートの `App.tsx` は薄いラッパー。`SafeAreaProvider` と `ErrorBoundary` で
+  `src/presentation/AppRoot` を包む
+- 日付: JST 基準の `dateKey` はクライアント/Functions とも `lib/date.ts` に集約
+  （端末のタイムゾーンに依存しない）
 - 型: TypeScript strict
 
 ## ドキュメント

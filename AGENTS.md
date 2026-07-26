@@ -3,14 +3,13 @@
 このリポジトリでエージェント（自動コーディング支援）が安全かつ一貫したやり方で作業するためのガイドです。ルールと手順はリポジトリ全体に適用されます（スコープ: ルート配下すべて）。
 
 ## 1. プロジェクト概要
-- スタック: Expo + React Native + React + TypeScript（strict）
-- 主要パッケージ（`package.json` より）
-  - expo `~54.0.10`
-  - react `19.1.0`
-  - react-native `0.81.4`
-  - firebase `^12.3.0`
-- エントリ: `index.ts` → `App.tsx`
-- 設定: `app.json`（iOS/Android/Web の基本設定）
+- スタック: Expo + React Native + React + TypeScript（strict）+ Firebase
+- 主要パッケージ（正は `package.json`。バージョンはここに二重管理しない）
+  - expo / react / react-native / firebase
+  - UI: react-native-paper、状態管理: zustand
+- エントリ: `index.ts` → `App.tsx`（`SafeAreaProvider` + `ErrorBoundary` → `AppRoot`）
+- サーバー: `functions/`（Cloud Functions 2nd Gen / Node.js 20）
+- 設定: `app.json`（iOS/Android/Web の基本設定）、`firestore.rules`、`firestore.indexes.json`
 
 ## 2. 開発・実行
 - 依存関係インストール: `npm install`（または `npm ci`）
@@ -31,30 +30,30 @@
 - 無関係変更の混入禁止（リフォーマット・リネーム・不要な並び替え等）。
 -- レイヤ構成（定義済み）: `src/domain`（モデル）, `src/application`（ユースケース/hooks）, `src/infrastructure`（外部I/O）, `src/presentation`（UI）。
 
-## 4. ディレクトリ指針（必要時）
-現状はシンプル構成（`App.tsx`, `index.ts`）。機能追加が必要になった場合は次のような配置を推奨（新規作成時のみ）。
+## 4. ディレクトリ構成
 
-- `components/`: 再利用可能な純粋コンポーネント
-- `screens/`: 画面単位のコンポーネント
-- `lib/`: 共通ユーティリティ（関数/フォーマッタ等）
-- `services/`: 外部サービス連携（例: Firebase）
-- `types/`: 共有型定義
+- `src/domain/`: モデル定義（`models.ts`）
+- `src/application/`: ユースケース/カスタムフック（`auth.ts`, `tasks.ts`, `households.ts` 等）
+- `src/infrastructure/`: 外部I/O（`firebaseClient.ts`）
+- `src/presentation/`: UI（`AppRoot.tsx`, `components/*`, `theme.ts`）
+- `src/lib/`: 共通ユーティリティ（`date.ts` … JST基準の日付キー）
+- `functions/src/`: Cloud Functions（`lib/date.ts` はクライアント側と同じ計算を持つ）
 
 既存ファイルの大規模再配置や命名規則変更は事前合意がある場合のみ実施。
 
 ## 5. Firebase/機密情報の扱い
 - API キー等の秘匿情報はリポジトリにコミットしない。
-- Expo の `extra`（`app.config.ts` 経由）や `.env` を利用して注入する方法を採用。
-- 例（参考）:
-  1) ルートに `app.config.ts` を用意し、`extra` に環境値を渡す
-  2) 実行時は `Constants.expoConfig?.extra` から参照
+- クライアント設定は `.env` の `EXPO_PUBLIC_*` から注入する（`.env.example` 参照）。
+- セキュリティルールは Console で手書きせず `firestore.rules` を編集してデプロイする。
 - 導入や変更が必要な場合は、まず相談/合意を取ること。
 
 ## 6. テスト/検証
-- 現状テスト設定は未導入。必要になった場合は以下を提案:
-  - ユニット: Jest + React Native Testing Library
-  - 型: `tsc --noEmit` を CI/ローカルで実行
-- 追加前に合意を取り、影響範囲を明確化する。
+- ルート: `npm run typecheck` / `npm test`（jest + ts-jest）
+- functions: `npm run typecheck` / `npm test` / `npm run build`
+- `.github/workflows/ci.yml` が push(main/develop) と PR で上記を実行する
+- 現状の対象は JST 日付ユーティリティ。コンポーネントテストを足す場合は
+  `jest-expo` プリセットの導入が必要（合意の上で）。
+- 方針の詳細は `.claude/rules/testing.md`
 
 ## 7. 依存関係
 - 追加は最小限に。軽量・メンテされているものを選ぶ。
@@ -81,8 +80,12 @@
   - 無関係ファイルのフォーマット/命名変更
 
 ## 10. 仕様・ドキュメント
-- 仕様書がある場合は `docs/` 配下に配置推奨（例: `docs/famly_mvp_v0.1_spec.md`）。
-- 現在、開発者のローカルにある仕様（例: `~/Downloads/famly_mvp_v0.1_spec.md`）は参照不能のため、必要に応じリポジトリへコピーして共有してください。
+- 仕様: `docs/famly_mvp_v0.1_spec.md`
+- ロードマップ: `docs/Famly_Version_Roadmap.md`
+- UI: `docs/ui-design-spec.md`
+- レビュー観点: `docs/code-review-checklist.md`
+- セットアップ/デプロイ手順: `README.md`
+- `docs/_local/` は Git 管理外（ローカル作業用）。
 
 ---
 

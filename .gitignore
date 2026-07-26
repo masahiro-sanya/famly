@@ -56,5 +56,7 @@ yarn-error.*
 /.firebase/
 
 # AI/IDE tools
-.claude/
+# CLAUDE.md / AGENTS.md から参照するルールは共有し、ローカル設定だけ除外する
+.claude/*
+!.claude/rules/
 .serena/
