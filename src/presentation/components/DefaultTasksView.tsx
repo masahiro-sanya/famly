@@ -1,12 +1,11 @@
 // デフォルトタスク（テンプレ）の一覧/編集ビュー。
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, View, Keyboard, Pressable, TouchableWithoutFeedback } from 'react-native';
-import { Button, Card, IconButton, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Card, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DefaultTask } from '../../domain/models';
 import type { FamlyTheme } from '../theme';
-
-const dayLabels = ['日','月','火','水','木','金','土'];
+import { DAY_LABELS, DefaultTaskRow } from './DefaultTaskRow';
 
 export function DefaultTasksView({
   items,
@@ -51,9 +50,7 @@ export function DefaultTasksView({
   const styles = useMemo(() => ({
     card: { alignSelf: 'stretch' as const, borderRadius: 16 },
     sectionTitle: { fontWeight: '600' as const, marginBottom: 12 },
-    item: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
     input: { backgroundColor: colors.inputBackground, marginBottom: 8 },
-    row: { flexDirection: 'row' as const, alignItems: 'center' as const },
     daysRow: { flexDirection: 'row' as const, flexWrap: 'nowrap' as const, gap: 4 },
     dayBtn: {
       height: 32,
@@ -61,9 +58,6 @@ export function DefaultTasksView({
       borderRadius: 16,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
-      backgroundColor: colors.secondaryContainer,
-    },
-    dayBtnActive: {
       backgroundColor: colors.secondaryContainer,
     },
     dayBtnText: { fontSize: 13, color: colors.onSurface },
@@ -97,56 +91,17 @@ export function DefaultTasksView({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             contentContainerStyle={{ paddingBottom: (insets.bottom + 16) + 220 }}
-            renderItem={({ item, index }) => {
-              const task = item as DefaultTask;
-              const isFirst = index === 0;
-              const isLast = index === items.length - 1;
-              return (
-                <View style={styles.item}>
-                  <TextInput
-                    mode="outlined"
-                    value={task.title}
-                    onChangeText={(v) => onUpdateTitle(task.id, v)}
-                    style={styles.input}
-                    dense
-                  />
-                  <View style={styles.row}>
-                    <IconButton icon="arrow-up" size={18} disabled={isFirst} onPress={() => onMove(task.id, 'up')} />
-                    <IconButton icon="arrow-down" size={18} disabled={isLast} onPress={() => onMove(task.id, 'down')} />
-                    <IconButton
-                      icon="delete"
-                      size={18}
-                      iconColor={colors.dangerText}
-                      onPress={() =>
-                        Alert.alert('削除の確認', `「${task.title}」を削除しますか？`, [
-                          { text: 'キャンセル', style: 'cancel' },
-                          { text: '削除', style: 'destructive', onPress: () => onDelete(task.id) },
-                        ])
-                      }
-                    />
-                  </View>
-                  <View style={styles.daysRow}>
-                    {dayLabels.map((label, idx) => {
-                      const active = (task.daysOfWeek || []).includes(idx);
-                      return (
-                        <Pressable
-                          key={idx}
-                          onPress={() => {
-                            const next = active ? task.daysOfWeek.filter(d=>d!==idx) : [...(task.daysOfWeek||[]), idx];
-                            onUpdateDays(task.id, next);
-                          }}
-                          style={[styles.dayBtn, active && styles.dayBtnActive]}
-                        >
-                          <Text style={active ? styles.dayBtnTextActive : styles.dayBtnText}>
-                            {active ? `✓ ${label}` : label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              );
-            }}
+            renderItem={({ item, index }) => (
+              <DefaultTaskRow
+                task={item}
+                isFirst={index === 0}
+                isLast={index === items.length - 1}
+                onUpdateTitle={onUpdateTitle}
+                onUpdateDays={onUpdateDays}
+                onMove={onMove}
+                onDelete={onDelete}
+              />
+            )}
             ListEmptyComponent={<Text style={styles.muted}>まだデフォルトタスクがありません</Text>}
             style={{ alignSelf: 'stretch' }}
           />
@@ -168,13 +123,16 @@ export function DefaultTasksView({
                   onSubmitEditing={handleAdd}
                 />
                 <View style={[styles.daysRow, { marginBottom: 8 }]}>
-                  {dayLabels.map((label, idx) => {
+                  {DAY_LABELS.map((label, idx) => {
                     const active = days.includes(idx);
                     return (
                       <Pressable
                         key={idx}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        accessibilityLabel={`${label}曜日`}
                         onPress={() => toggleDay(idx)}
-                        style={[styles.dayBtn, active && styles.dayBtnActive]}
+                        style={styles.dayBtn}
                       >
                         <Text style={active ? styles.dayBtnTextActive : styles.dayBtnText}>
                           {active ? `✓ ${label}` : label}
