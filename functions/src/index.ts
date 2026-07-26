@@ -1,6 +1,6 @@
 // default_tasks から当日分の tasks を生成する Cloud Functions (2nd Gen, Node.js 20)。
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
 import { todayKeyJST, todayWeekdayJST } from './lib/date';
@@ -8,85 +8,10 @@ import { todayKeyJST, todayWeekdayJST } from './lib/date';
 try { admin.initializeApp(); } catch {}
 const db = admin.firestore();
 
-/** 指定householdのテンプレから当日分をtasksへ生成（重複防止つき） */
-async function generateForHousehold(householdId: string) {
-  const dateKey = todayKeyJST();
-  const dow = todayWeekdayJST();
-  const defaultsSnap = await db
-    .collection('default_tasks')
-    .doc(householdId)
-    .collection('items')
-    .where('daysOfWeek', 'array-contains', dow)
-    .get();
-
-  for (const docSnap of defaultsSnap.docs) {
-    const def = docSnap.data() as { title: string };
-    const title = (def.title || '').trim();
-    if (!title) continue;
-
-    // Duplication guard: householdId + dateKey + title
-    const exists = await db
-      .collection('tasks')
-      .where('householdId', '==', householdId)
-      .where('dateKey', '==', dateKey)
-      .where('title', '==', title)
-      .limit(1)
-      .get();
-    if (!exists.empty) continue;
-
-    await db.collection('tasks').add({
-      title,
-      householdId,
-      userId: 'system',
-      status: 'pending',
-      dateKey,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      reactions: {},
-    });
-  }
-}
-
-// Pub/Subスケジュール: JST 05:00 に全householdを走査
-export const generateDailyTasks = onSchedule(
-  {
-    schedule: '0 5 * * *',
-    timeZone: 'Asia/Tokyo',
-    region: 'asia-northeast1',
-  },
-  async () => {
-    // collectionGroup ではなく、親ドキュメント列挙で householdId を取得する方式に変更。
-    // これにより items/daysOfWeek の単一フィールド（CG）インデックスが不要になる。
-    const householdsSnap = await db.collection('default_tasks').get();
-    const ids = householdsSnap.docs.map((d) => d.id);
-    await Promise.all(ids.map((hid) => generateForHousehold(hid)));
-    logger.info('Daily tasks generated', { households: ids.length });
-  }
-);
-
-// Manual trigger for testing (secure appropriately in production)
-// 手動HTTPトリガ（検証用途）。本番は認証等で保護すること。
-export const generateDailyTasksHttp = onRequest({ region: 'asia-northeast1' }, async (req, res) => {
-  const householdId = (req.query.householdId as string | undefined)
-    || (req.query.houholdId as string | undefined) // タイプミス対策
-    || undefined;
-  try {
-    // householdId は必須。未指定アクセス（Botや誤アクセス）は 400 で早期終了し、
-    // Firestore クエリを走らせないことで 500(FAILED_PRECONDITION) を防ぐ。
-    if (!householdId) {
-      res.status(400).json({ ok: false, error: 'householdId is required' });
-      return;
-    }
-
-    await generateForHousehold(householdId);
-    res.status(200).json({ ok: true, dateKey: todayKeyJST() });
-  } catch (e: any) {
-    logger.error('generateDailyTasksHttp failed', e);
-    res.status(500).json({ ok: false, error: e?.message });
-  }
-});
-
 /** Firestore の1バッチあたりの書き込み上限 */
 const BATCH_LIMIT = 500;
+/** スケジュール実行時に同時処理する household 数の上限 */
+const HOUSEHOLD_CONCURRENCY = 10;
 
 type BatchOp = (batch: admin.firestore.WriteBatch) => void;
 
@@ -108,6 +33,96 @@ async function ignoreNotFound<T>(work: Promise<T>): Promise<T | undefined> {
     throw e;
   }
 }
+
+/** 指定householdのテンプレから当日分をtasksへ生成（重複防止つき） */
+async function generateForHousehold(householdId: string): Promise<number> {
+  const dateKey = todayKeyJST();
+  const dow = todayWeekdayJST();
+  const defaultsSnap = await db
+    .collection('default_tasks')
+    .doc(householdId)
+    .collection('items')
+    .where('daysOfWeek', 'array-contains', dow)
+    .get();
+  if (defaultsSnap.empty) return 0;
+
+  // 重複判定用に当日分のタイトルを1クエリでまとめて取得する
+  const todaySnap = await db
+    .collection('tasks')
+    .where('householdId', '==', householdId)
+    .where('dateKey', '==', dateKey)
+    .get();
+  const existingTitles = new Set(todaySnap.docs.map((d) => (d.data() as { title?: string }).title));
+
+  const ops: BatchOp[] = [];
+  for (const docSnap of defaultsSnap.docs) {
+    const title = ((docSnap.data() as { title?: string }).title ?? '').trim();
+    if (!title || existingTitles.has(title)) continue;
+    existingTitles.add(title); // テンプレ内の重複も1件にまとめる
+    const ref = db.collection('tasks').doc();
+    ops.push((b) => b.set(ref, {
+      title,
+      householdId,
+      userId: 'system',
+      status: 'pending',
+      dateKey,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      reactions: {},
+    }));
+  }
+  await commitInChunks(ops);
+  return ops.length;
+}
+
+// Pub/Subスケジュール: JST 05:00 に全householdを走査
+export const generateDailyTasks = onSchedule(
+  {
+    schedule: '0 5 * * *',
+    timeZone: 'Asia/Tokyo',
+    region: 'asia-northeast1',
+  },
+  async () => {
+    // collectionGroup ではなく、親ドキュメント列挙で householdId を取得する方式に変更。
+    // これにより items/daysOfWeek の単一フィールド（CG）インデックスが不要になる。
+    const householdsSnap = await db.collection('default_tasks').listDocuments();
+    const ids = householdsSnap.map((d) => d.id);
+
+    // 世帯数に比例して並列度が上がらないよう小分けにし、
+    // 1世帯の失敗で他の世帯の生成が止まらないよう allSettled で受ける。
+    let created = 0;
+    const failed: string[] = [];
+    for (let i = 0; i < ids.length; i += HOUSEHOLD_CONCURRENCY) {
+      const chunk = ids.slice(i, i + HOUSEHOLD_CONCURRENCY);
+      const results = await Promise.allSettled(chunk.map((hid) => generateForHousehold(hid)));
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled') created += r.value;
+        else {
+          failed.push(chunk[idx]);
+          logger.error('generateForHousehold failed', { householdId: chunk[idx], error: r.reason });
+        }
+      });
+    }
+    logger.info('Daily tasks generated', { households: ids.length, created, failed: failed.length });
+  }
+);
+
+// 手動生成（検証用）。旧 generateDailyTasksHttp は無認証の onRequest で、
+// householdId さえ分かれば誰でも他人の世帯にタスクを作れたため Callable に置き換えた。
+// 生成できるのは呼び出し元自身の世帯のみ。
+export const generateDailyTasksNow = onCall({ region: 'asia-northeast1' }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'UNAUTHENTICATED');
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const householdId: string | undefined = userSnap.exists
+    ? (userSnap.data() as { householdId?: string }).householdId
+    : undefined;
+  if (!householdId) throw new HttpsError('failed-precondition', 'household not found');
+
+  await generateForHousehold(householdId);
+  logger.info('generateDailyTasksNow', { uid, householdId });
+  return { ok: true, householdId, dateKey: todayKeyJST() };
+});
 
 // Callable: 退会時に本人のデータを削除し、共有データからは本人の痕跡を消す。
 // 家族と共有しているタスクは家族側の記録なので削除せず匿名化する。

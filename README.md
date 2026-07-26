@@ -279,7 +279,7 @@ eas submit -p ios --latest
     2. `cd functions && npm install`
     3. `npm run build`
     4. `firebase deploy --only functions`（または `npm run deploy`）
-    5. 生成の手動テスト: `generateDailyTasksHttp` をHTTPで叩く（必要に応じて保護）
+    5. 生成の手動テスト: Callable `generateDailyTasksNow` を呼ぶ（自分の世帯のみ生成される）
   - Cloud Scheduler（Console）で 05:00 JST にトリガー
 
 ## Functions デプロイ手順（詳細）
@@ -307,9 +307,9 @@ firebase deploy --only functions --config ../firebase.json --project famly-dev-4
 
 4) 動作確認
 - Console → Functions でデプロイ完了を確認
-- HTTPテスト（手動生成）
-  - デプロイ後に表示される `generateDailyTasksHttp` のURLにアクセス
-  - householdId を指定して単体確認: `...?householdId=<YOUR_HOUSEHOLD_ID>`
+- 手動生成テスト（Callable）
+  - `firebase functions:shell` から `generateDailyTasksNow({}, { auth: { uid: '<YOUR_UID>' } })`
+  - 生成先は呼び出したユーザーの世帯に限定される（URLを叩く無認証エンドポイントは廃止）
 
 5) スケジュール（自動生成）
 - Functions v2 の `onSchedule({ schedule: '0 5 * * *', timeZone: 'Asia/Tokyo' })` により、05:00 JST に Cloud Scheduler ジョブが作成されます

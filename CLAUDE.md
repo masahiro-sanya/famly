@@ -114,7 +114,7 @@ src/
 | 関数 | トリガー | 用途 |
 |------|---------|------|
 | `generateDailyTasks` | スケジュール (JST 05:00) | テンプレートから当日タスク自動生成 |
-| `generateDailyTasksHttp` | HTTP | 手動タスク生成（検証用） |
+| `generateDailyTasksNow` | Callable | 手動タスク生成（検証用・自世帯のみ） |
 | `deleteMyAccount` | Callable | アカウント削除 |
 | `joinByInvite` | Callable | 招待コードで世帯参加 |
 
