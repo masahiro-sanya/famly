@@ -3,25 +3,10 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
+import { todayKeyJST, todayWeekdayJST } from './lib/date';
 
 try { admin.initializeApp(); } catch {}
 const db = admin.firestore();
-
-/** JSTの当日キー(YYYY-MM-DD) */
-function todayKeyJST(d = new Date()): string {
-  // Convert current time to Asia/Tokyo without external libs
-  const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
-  const y = jst.getUTCFullYear();
-  const m = String(jst.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(jst.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** JSTの曜日(0=日 ... 6=土) */
-function todayWeekdayJST(d = new Date()): number {
-  const jst = new Date(d.getTime() + (9 * 60 - d.getTimezoneOffset()) * 60000);
-  return jst.getUTCDay(); // 0=Sun ... 6=Sat
-}
 
 /** 指定householdのテンプレから当日分をtasksへ生成（重複防止つき） */
 async function generateForHousehold(householdId: string) {
