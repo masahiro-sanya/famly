@@ -5,10 +5,8 @@ import { db } from '../infrastructure/firebaseClient';
 import {
   addDoc,
   arrayRemove,
-  arrayUnion,
   collection,
   doc,
-  getDoc,
   onSnapshot,
   query,
   serverTimestamp,
@@ -79,28 +77,40 @@ export async function regenerateInviteCode(householdId: string) {
   await updateDoc(doc(db, 'households', householdId), { inviteCode: randomCode() });
 }
 
-export async function joinByInvite(userId: string, code: string) {
-  const q = query(collection(db, 'households'), where('inviteCode', '==', code.trim().toUpperCase()));
-  const snap = await (await import('firebase/firestore')).getDocs(q);
-  if (snap.empty) throw new Error('招待コードが見つかりません');
-  const h = snap.docs[0];
-  await updateDoc(doc(db, 'households', h.id), { members: arrayUnion(userId) });
-  await updateDoc(doc(db, 'users', userId), { householdId: h.id });
-  return h.id as string;
-}
-
 export async function leaveHousehold(userId: string, householdId: string) {
   // householdから外し、ユーザーは個人ハウスホールドへ退避（存在しなくても householdId を自分UIDに設定）
   await updateDoc(doc(db, 'households', householdId), { members: arrayRemove(userId) });
   await updateDoc(doc(db, 'users', userId), { householdId: userId });
 }
 
-// Callable 経由の参加（推奨）: Functions 側でメンバー追加と householdId 更新を一括実行
+// Callable 経由の参加: Functions 側でメンバー追加と householdId 更新を一括実行する。
+// クライアントは他世帯の households を読めないため、参加経路はこれ一本。
 export async function joinByInviteCallable(code: string): Promise<string> {
   const functions = getFunctions(undefined, 'asia-northeast1');
   const fn = httpsCallable(functions, 'joinByInvite');
-  const res = await fn({ code });
-  const data = res.data as any;
-  if (!data?.ok) throw new Error(data?.error || '参加に失敗しました');
-  return data.householdId as string;
+  try {
+    const res = await fn({ code });
+    const data = res.data as { ok?: boolean; householdId?: string };
+    if (!data?.ok || !data.householdId) throw new Error('参加に失敗しました');
+    return data.householdId;
+  } catch (e: any) {
+    throw new Error(joinErrorMessage(e));
+  }
+}
+
+/** Callable のエラーコードをユーザー向けメッセージに変換する */
+function joinErrorMessage(e: any): string {
+  switch (e?.code) {
+    case 'functions/not-found':
+      return '招待コードが見つかりません';
+    case 'functions/invalid-argument':
+      return '招待コードを入力してください';
+    case 'functions/unauthenticated':
+      return 'ログインし直してください';
+    case 'functions/unavailable':
+    case 'functions/deadline-exceeded':
+      return '通信に失敗しました。電波状況を確認して再度お試しください';
+    default:
+      return e?.message || '参加に失敗しました';
+  }
 }

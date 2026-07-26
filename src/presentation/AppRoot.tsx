@@ -13,7 +13,7 @@ import { ProfileView } from './components/ProfileView';
 import { SettingsView } from './components/SettingsView';
 import { InputBar } from './components/InputBar';
 import { useUIStore } from '../application/store';
-import { useHousehold, createHousehold, regenerateInviteCode, joinByInvite, joinByInviteCallable, leaveHousehold, useHouseholdMembers, updateHouseholdName } from '../application/households';
+import { useHousehold, createHousehold, regenerateInviteCode, joinByInviteCallable, leaveHousehold, useHouseholdMembers, updateHouseholdName } from '../application/households';
 import { useDefaultTasks, addDefaultTask, updateDefaultTaskDays, updateDefaultTaskTitle, deleteDefaultTask, moveDefaultTask } from '../application/defaultTasks';
 import { lightTheme, darkTheme } from './theme';
 
@@ -155,11 +155,8 @@ export default function AppRoot() {
                 await createHousehold(user.uid, name);
               }}
               onJoinByCode={async (code) => {
-                try {
-                  await joinByInviteCallable(code);
-                } catch (e) {
-                  await joinByInvite(user.uid, code);
-                }
+                // 失敗はそのまま呼び出し元へ伝える（旧クライアント直書きのフォールバックは廃止）
+                await joinByInviteCallable(code);
               }}
               onRegenerateInvite={async () => {
                 if (profile.householdId) await regenerateInviteCode(profile.householdId);

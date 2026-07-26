@@ -24,10 +24,10 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // households: MVPのため、招待コード検索の都合上、認証済ユーザーのreadを許可。
-    // 将来的にはCloud Functions経由の参加フローに移行し、readをメンバー限定に絞ることを推奨。
+    // households: 招待コードでの参加は Callable(joinByInvite) 経由に一本化したため、
+    // read はメンバー限定。これにより他世帯の inviteCode が全ユーザーに見える状態を防ぐ。
     match /households/{hid} {
-      allow read: if signedIn();
+      allow read: if signedIn() && isMember(hid);
       allow create: if signedIn() && uid() in request.resource.data.members;
       allow update: if signedIn() && isMember(hid);
       allow delete: if false;

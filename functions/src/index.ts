@@ -144,12 +144,23 @@ export const joinByInvite = onCall({ region: 'asia-northeast1' }, async (req) =>
 
   const snap = await db.collection('households').where('inviteCode', '==', code).limit(1).get();
   if (snap.empty) throw new HttpsError('not-found', 'invalid invite code');
-  const h = snap.docs[0];
-  const hid = h.id;
-  // add to members
+  const hid = snap.docs[0].id;
+
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const prevHid: string | undefined = userSnap.exists
+    ? (userSnap.data() as { householdId?: string }).householdId
+    : undefined;
+  if (prevHid === hid) return { ok: true, householdId: hid };
+
+  // 旧世帯のメンバーから外す。残したままだと参加後も旧世帯のデータを読めてしまう。
+  if (prevHid && prevHid !== uid) {
+    await db.collection('households').doc(prevHid)
+      .update({ members: admin.firestore.FieldValue.arrayRemove(uid) });
+  }
   await db.collection('households').doc(hid)
     .update({ members: admin.firestore.FieldValue.arrayUnion(uid) });
-  // set user's householdId
-  await db.collection('users').doc(uid).set({ householdId: hid }, { merge: true });
+  await userRef.set({ householdId: hid }, { merge: true });
+  logger.info('joinByInvite', { uid, from: prevHid ?? null, to: hid });
   return { ok: true, householdId: hid };
 });
