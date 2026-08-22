@@ -3,14 +3,29 @@ service cloud.firestore {
   match /databases/{db}/documents {
     function signedIn() { return request.auth != null; }
     function uid() { return request.auth.uid; }
-    function userHousehold() {
-      return get(/databases/$(db)/documents/users/$(uid())).data.householdId;
-    }
     function isMember(hid) {
       return hid == uid() || (
         exists(/databases/$(db)/documents/households/$(hid)) &&
         uid() in get(/databases/$(db)/documents/households/$(hid)).data.members
       );
+    }
+    /**
+     * households の update で members に許される変更は「自分が抜ける」ことだけ。
+     * 追加は Callable(joinByInvite / createHousehold) の admin 権限のみが行う。
+     */
+    function membersChangeAllowed() {
+      return request.resource.data.members.toSet()
+               .difference(resource.data.members.toSet()).size() == 0
+        && resource.data.members.toSet()
+               .difference(request.resource.data.members.toSet()).hasOnly([uid()]);
+    }
+
+    /**
+     * 招待コードは世帯に入るための合言葉。クライアントから書き換えられると
+     * 推測しやすい値に差し替えられるため、再発行は Callable に一本化する。
+     */
+    function inviteCodeUnchanged() {
+      return request.resource.data.inviteCode == resource.data.inviteCode;
     }
 
     // users: 自分のみ参照・更新可。初回作成も本人のみ許可。
@@ -24,12 +39,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // households: MVPのため、招待コード検索の都合上、認証済ユーザーのreadを許可。
-    // 将来的にはCloud Functions経由の参加フローに移行し、readをメンバー限定に絞ることを推奨。
+    // households: 招待コードでの参加は Callable(joinByInvite) 経由に一本化したため、
+    // read はメンバー限定。これにより他世帯の inviteCode が全ユーザーに見える状態を防ぐ。
     match /households/{hid} {
-      allow read: if signedIn();
-      allow create: if signedIn() && uid() in request.resource.data.members;
-      allow update: if signedIn() && isMember(hid);
+      allow read: if signedIn() && isMember(hid);
+      // 作成は Callable(createHousehold) の admin 権限のみ。クライアントから直接作らせると
+      // 旧世帯からの離脱と users.householdId 更新を1トランザクションにできない。
+      allow create: if false;
+      // メンバー追加は Callable(joinByInvite / createHousehold) の admin 権限だけが行う。
+      // クライアントからの update で members を増やせると、メンバーの1人が
+      // 世帯外のユーザーへ読み取り権限を配れてしまう。他人を蹴り出すのも禁止し、
+      // 許すのは退出（自分自身の削除）と members 以外のフィールド更新のみ。
+      allow update: if signedIn() && isMember(hid)
+        && membersChangeAllowed() && inviteCodeUnchanged();
       allow delete: if false;
     }
 

@@ -9,6 +9,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
+  "// include": "テストも型チェック対象に含める。ビルド時の除外は tsconfig.build.json 側で行う。",
   "include": ["src"]
 }
 

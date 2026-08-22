@@ -3,7 +3,6 @@ import { Alert, View, Keyboard, TouchableWithoutFeedback, Platform, ToastAndroid
 import { Button, Card, IconButton, Text, TextInput, useTheme } from 'react-native-paper';
 import * as Clipboard from 'expo-clipboard';
 import { deleteMyAccount as deleteMyAccountAction } from '../../application/account';
-import Constants from 'expo-constants';
 import type { FamlyTheme } from '../theme';
 
 // Household管理を含む設定画面
@@ -36,10 +35,11 @@ export function SettingsView({
   const [copied, setCopied] = useState(false);
   const [editName, setEditName] = useState(householdName ?? '');
   useEffect(() => setEditName(householdName ?? ''), [householdName]);
+  // app.json の extra.privacyPolicyUrl は定義されておらず参照経路が死んでいたため、
+  // 環境変数(.env.example に記載)のみを見る。
   const privacyUrl = useMemo(() => {
-    const fromEnv = process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL as string | undefined;
-    const fromExtra = (Constants?.expoConfig?.extra as any)?.privacyPolicyUrl as string | undefined;
-    return (fromEnv && fromEnv.length > 0) ? fromEnv : (fromExtra && fromExtra.length > 0 ? fromExtra : undefined);
+    const fromEnv = process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL;
+    return fromEnv && fromEnv.length > 0 ? fromEnv : undefined;
   }, []);
   const isInFamily = !!inviteCode;
 
