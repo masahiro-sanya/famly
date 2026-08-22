@@ -1,15 +1,14 @@
 // Households 管理（作成/参加/退出/招待コード）と購読フック
 import { useEffect, useState } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { callableErrorMessage, JOIN_ERRORS, REGENERATE_INVITE_ERRORS } from './callableError';
 import { db } from '../infrastructure/firebaseClient';
 import {
-  addDoc,
   arrayRemove,
   collection,
   doc,
   onSnapshot,
   query,
-  serverTimestamp,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -55,31 +54,36 @@ export function useHouseholdMembers(householdId?: string | null) {
   return members;
 }
 
-function randomCode(len = 6) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = '';
-  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
-  return s;
-}
-
-export async function createHousehold(userId: string, name: string, currentHouseholdId?: string | null) {
-  const ref = await addDoc(collection(db, 'households'), {
-    name: name.trim() || '家族',
-    inviteCode: randomCode(),
-    members: [userId],
-    createdAt: serverTimestamp(),
-  });
-  // 旧世帯の members に残っていると、移った後も旧世帯のデータを読めてしまう
-  // （joinByInvite で塞いだのと同じ穴）。個人世帯は households を持たないので対象外。
-  if (currentHouseholdId && currentHouseholdId !== userId) {
-    await updateDoc(doc(db, 'households', currentHouseholdId), { members: arrayRemove(userId) });
+// Callable 経由の世帯作成: 世帯の作成・プロフィールの付け替え・旧世帯からの離脱を
+// Functions 側の1トランザクションで行う。クライアントで3回に分けて書くと途中で失敗したとき
+// 「プロフィールは旧世帯を指しているが members にいない」といった中途半端な状態が残るため。
+// households の create はルールで禁止しており、この経路以外では作れない。
+export async function createHousehold(name: string): Promise<string> {
+  const functions = getFunctions(undefined, 'asia-northeast1');
+  const fn = httpsCallable(functions, 'createHousehold');
+  try {
+    const res = await fn({ name });
+    const data = res.data as { ok?: boolean; householdId?: string };
+    if (!data?.ok || !data.householdId) throw new Error('家族の作成に失敗しました');
+    return data.householdId;
+  } catch (e: any) {
+    throw new Error(callableErrorMessage(e, '家族の作成に失敗しました'));
   }
-  await updateDoc(doc(db, 'users', userId), { householdId: ref.id });
-  return ref.id as string;
 }
 
-export async function regenerateInviteCode(householdId: string) {
-  await updateDoc(doc(db, 'households', householdId), { inviteCode: randomCode() });
+// Callable 経由の招待コード再発行: 生成は Functions 側に一本化する。
+// クライアントの Math.random は推測しやすく、ルールでも inviteCode の更新は禁止している。
+export async function regenerateInviteCode(): Promise<string> {
+  const functions = getFunctions(undefined, 'asia-northeast1');
+  const fn = httpsCallable(functions, 'regenerateInviteCode');
+  try {
+    const res = await fn({});
+    const data = res.data as { ok?: boolean; inviteCode?: string };
+    if (!data?.ok || !data.inviteCode) throw new Error('招待コードの再発行に失敗しました');
+    return data.inviteCode;
+  } catch (e: any) {
+    throw new Error(callableErrorMessage(e, '招待コードの再発行に失敗しました', REGENERATE_INVITE_ERRORS));
+  }
 }
 
 export async function leaveHousehold(userId: string, householdId: string) {
@@ -99,23 +103,6 @@ export async function joinByInviteCallable(code: string): Promise<string> {
     if (!data?.ok || !data.householdId) throw new Error('参加に失敗しました');
     return data.householdId;
   } catch (e: any) {
-    throw new Error(joinErrorMessage(e));
-  }
-}
-
-/** Callable のエラーコードをユーザー向けメッセージに変換する */
-function joinErrorMessage(e: any): string {
-  switch (e?.code) {
-    case 'functions/not-found':
-      return '招待コードが見つかりません';
-    case 'functions/invalid-argument':
-      return '招待コードを入力してください';
-    case 'functions/unauthenticated':
-      return 'ログインし直してください';
-    case 'functions/unavailable':
-    case 'functions/deadline-exceeded':
-      return '通信に失敗しました。電波状況を確認して再度お試しください';
-    default:
-      return e?.message || '参加に失敗しました';
+    throw new Error(callableErrorMessage(e, '参加に失敗しました', JOIN_ERRORS));
   }
 }

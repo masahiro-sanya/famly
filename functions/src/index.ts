@@ -3,7 +3,17 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
+import { randomBytes } from 'crypto';
 import { todayKeyJST, todayWeekdayJST } from './lib/date';
+import {
+  INVITE_CODE_LENGTH,
+  inviteCodeFromBytes,
+  normalizeHouseholdName,
+  normalizeInviteCode,
+  planDailyTitles,
+  planJoin,
+  planTaskCleanup,
+} from './lib/plan';
 
 try { admin.initializeApp(); } catch {}
 const db = admin.firestore();
@@ -22,6 +32,28 @@ async function commitInChunks(ops: BatchOp[]) {
     for (const op of ops.slice(i, i + BATCH_LIMIT)) op(batch);
     await batch.commit();
   }
+}
+
+/** 招待コードを生成する（推測されにくいよう暗号論的乱数を使う） */
+function generateInviteCode(): string {
+  return inviteCodeFromBytes(randomBytes(INVITE_CODE_LENGTH));
+}
+
+const INVITE_CODE_MAX_ATTEMPTS = 5;
+
+/**
+ * 未使用の招待コードを払い出す。
+ * joinByInvite はコード一致の先頭1件へ参加させるため、重複すると別世帯へ入ってしまう。
+ * 生成→存在確認の間に別の作成が挟まる可能性は残る（ベストエフォート）が、
+ * 32^6 の空間で5回とも衝突するのは異常事態なので、その場合は失敗させる。
+ */
+async function generateUniqueInviteCode(): Promise<string> {
+  for (let i = 0; i < INVITE_CODE_MAX_ATTEMPTS; i++) {
+    const code = generateInviteCode();
+    const dup = await db.collection('households').where('inviteCode', '==', code).limit(1).get();
+    if (dup.empty) return code;
+  }
+  throw new HttpsError('internal', 'failed to allocate invite code');
 }
 
 /** すでに存在しないドキュメントへの操作だけを無視する（他のエラーは伝播させる） */
@@ -52,15 +84,14 @@ async function generateForHousehold(householdId: string): Promise<number> {
     .where('householdId', '==', householdId)
     .where('dateKey', '==', dateKey)
     .get();
-  const existingTitles = new Set(todaySnap.docs.map((d) => (d.data() as { title?: string }).title));
+  const titles = planDailyTitles(
+    defaultsSnap.docs.map((d) => (d.data() as { title?: string }).title),
+    todaySnap.docs.map((d) => (d.data() as { title?: string }).title)
+  );
 
-  const ops: BatchOp[] = [];
-  for (const docSnap of defaultsSnap.docs) {
-    const title = ((docSnap.data() as { title?: string }).title ?? '').trim();
-    if (!title || existingTitles.has(title)) continue;
-    existingTitles.add(title); // テンプレ内の重複も1件にまとめる
+  const ops: BatchOp[] = titles.map((title) => {
     const ref = db.collection('tasks').doc();
-    ops.push((b) => b.set(ref, {
+    return (b: admin.firestore.WriteBatch) => b.set(ref, {
       title,
       householdId,
       userId: 'system',
@@ -68,8 +99,8 @@ async function generateForHousehold(householdId: string): Promise<number> {
       dateKey,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       reactions: {},
-    }));
-  }
+    });
+  });
   await commitInChunks(ops);
   return ops.length;
 }
@@ -109,6 +140,7 @@ export const generateDailyTasks = onSchedule(
 // 手動生成（検証用）。旧 generateDailyTasksHttp は無認証の onRequest で、
 // householdId さえ分かれば誰でも他人の世帯にタスクを作れたため Callable に置き換えた。
 // 生成できるのは呼び出し元自身の世帯のみ。
+// アプリからは呼ばない。呼び出し方は README「Functions デプロイ手順（詳細）> 4) 動作確認」を参照。
 export const generateDailyTasksNow = onCall({ region: 'asia-northeast1' }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'UNAUTHENTICATED');
@@ -157,21 +189,23 @@ export const deleteMyAccount = onCall({ region: 'asia-northeast1' }, async (req)
   ]);
 
   const del = admin.firestore.FieldValue.delete();
-  const personalPaths = new Set(personalSnap.docs.map((d) => d.ref.path));
-  const taskOps: BatchOp[] = personalSnap.docs.map((d) => (b: admin.firestore.WriteBatch) => b.delete(d.ref));
-
-  // 共有タスクは残すので、同一ドキュメントへの更新を1回にまとめる
-  const anonymize = new Map<string, { ref: admin.firestore.DocumentReference; data: Record<string, unknown> }>();
-  const mark = (d: admin.firestore.QueryDocumentSnapshot, fields: Record<string, unknown>) => {
-    if (personalPaths.has(d.ref.path)) return; // 削除するので更新不要
-    const entry = anonymize.get(d.ref.path) ?? { ref: d.ref, data: {} };
-    anonymize.set(d.ref.path, { ref: entry.ref, data: { ...entry.data, ...fields } });
-  };
-  ownedSnap.docs.forEach((d) => mark(d, { userId: 'deleted', userName: del }));
-  completedSnap.docs.forEach((d) => mark(d, { completedByUserId: del, completedByName: del }));
-  for (const { ref, data } of anonymize.values()) {
-    taskOps.push((b) => b.update(ref, data));
+  const refByPath = new Map<string, admin.firestore.DocumentReference>();
+  for (const d of [...personalSnap.docs, ...ownedSnap.docs, ...completedSnap.docs]) {
+    refByPath.set(d.ref.path, d.ref);
   }
+  const plan = planTaskCleanup({
+    personalPaths: personalSnap.docs.map((d) => d.ref.path),
+    ownedPaths: ownedSnap.docs.map((d) => d.ref.path),
+    completedPaths: completedSnap.docs.map((d) => d.ref.path),
+  });
+
+  const taskOps: BatchOp[] = [
+    ...plan.delete.map((path) => (b: admin.firestore.WriteBatch) => b.delete(refByPath.get(path)!)),
+    ...plan.anonymize.map((entry) => (b: admin.firestore.WriteBatch) => b.update(refByPath.get(entry.path)!, {
+      ...(entry.clearOwner ? { userId: 'deleted', userName: del } : {}),
+      ...(entry.clearCompleter ? { completedByUserId: del, completedByName: del } : {}),
+    })),
+  ];
   await commitInChunks(taskOps);
 
   // 4) 個人世帯のテンプレを削除（共有世帯のテンプレは家族のものなので残す）
@@ -189,40 +223,113 @@ export const deleteMyAccount = onCall({ region: 'asia-northeast1' }, async (req)
   logger.info('deleteMyAccount done', {
     uid,
     stamps: stampsSnap.size,
-    tasksDeleted: personalSnap.size,
-    tasksAnonymized: anonymize.size,
+    tasksDeleted: plan.delete.length,
+    tasksAnonymized: plan.anonymize.length,
     defaultTaskItems: itemsSnap.size,
   });
   return { ok: true };
 });
 
+// Callable: 世帯の新規作成。クライアントから直接 households を作らせると、
+// 「作成」「旧世帯からの離脱」「users.householdId の更新」を1トランザクションにできず、
+// 途中で失敗すると所属が壊れた状態が残る。ここで admin 権限のトランザクションにまとめる。
+export const createHousehold = onCall({ region: 'asia-northeast1' }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'UNAUTHENTICATED');
+  const name = normalizeHouseholdName(req.data?.name);
+
+  const userRef = db.collection('users').doc(uid);
+  const newRef = db.collection('households').doc();
+  const inviteCode = await generateUniqueInviteCode();
+
+  const prevHid = await db.runTransaction(async (t) => {
+    // トランザクションでは読み取りを先に済ませる必要がある
+    const userSnap = await t.get(userRef);
+    const prev: string | undefined = userSnap.exists
+      ? (userSnap.data() as { householdId?: string }).householdId
+      : undefined;
+    // 個人世帯(prev == uid)は households ドキュメントを持たないので外す対象がない
+    const prevRef = prev && prev !== uid ? db.collection('households').doc(prev) : null;
+    const prevSnap = prevRef ? await t.get(prevRef) : null;
+
+    t.set(newRef, {
+      name,
+      inviteCode,
+      members: [uid],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    t.set(userRef, { householdId: newRef.id }, { merge: true });
+    // 旧世帯に残っていると、移った後も旧世帯のデータを読めてしまう
+    if (prevRef && prevSnap?.exists) {
+      t.update(prevRef, { members: admin.firestore.FieldValue.arrayRemove(uid) });
+    }
+    return prev ?? null;
+  });
+
+  logger.info('createHousehold', { uid, from: prevHid, to: newRef.id });
+  return { ok: true, householdId: newRef.id };
+});
+
+// Callable: 招待コードの再発行。招待コードは世帯に入るための合言葉なので、
+// クライアント側の Math.random で作らせない（生成の強度がここに一本化される）。
+// ルールでも households.inviteCode のクライアント更新を禁止している。
+export const regenerateInviteCode = onCall({ region: 'asia-northeast1' }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'UNAUTHENTICATED');
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const hid: string | undefined = userSnap.exists
+    ? (userSnap.data() as { householdId?: string }).householdId
+    : undefined;
+  // 個人世帯(hid == uid)は households ドキュメントを持たず、招待もできない
+  if (!hid || hid === uid) throw new HttpsError('failed-precondition', 'not in a shared household');
+
+  const ref = db.collection('households').doc(hid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'household not found');
+  const members: string[] = (snap.data() as { members?: string[] }).members ?? [];
+  // プロフィールの householdId は自己申告なので、members 側でも所属を確かめる
+  if (!members.includes(uid)) throw new HttpsError('permission-denied', 'not a member');
+
+  const inviteCode = await generateUniqueInviteCode();
+  await ref.update({ inviteCode });
+  logger.info('regenerateInviteCode', { uid, hid });
+  return { ok: true, inviteCode };
+});
+
 // Callable: Join household by invite code (adds caller as member)
 export const joinByInvite = onCall({ region: 'asia-northeast1' }, async (req) => {
   const uid = req.auth?.uid;
-  const code = (req.data?.code as string | undefined)?.toUpperCase().trim();
   if (!uid) throw new HttpsError('unauthenticated', 'UNAUTHENTICATED');
+  const code = normalizeInviteCode(req.data?.code);
   if (!code) throw new HttpsError('invalid-argument', 'code is required');
 
   const snap = await db.collection('households').where('inviteCode', '==', code).limit(1).get();
   if (snap.empty) throw new HttpsError('not-found', 'invalid invite code');
-  const hid = snap.docs[0].id;
+  const householdDoc = snap.docs[0];
+  const hid = householdDoc.id;
+  const members: string[] = (householdDoc.data() as { members?: string[] }).members ?? [];
 
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   const prevHid: string | undefined = userSnap.exists
     ? (userSnap.data() as { householdId?: string }).householdId
     : undefined;
-  if (prevHid === hid) return { ok: true, householdId: hid };
+
+  const plan = planJoin({ uid, hid, members, prevHid });
+  if (plan.alreadyJoined) return { ok: true, householdId: hid };
 
   // 先に新世帯へ追加してから旧世帯を外す。逆順だと2手目の失敗で
   // どの世帯にも属さない状態が残る。
-  await db.collection('households').doc(hid)
-    .update({ members: admin.firestore.FieldValue.arrayUnion(uid) });
+  if (plan.addToNew) {
+    await db.collection('households').doc(hid)
+      .update({ members: admin.firestore.FieldValue.arrayUnion(uid) });
+  }
   // 旧世帯のメンバーから外す。残したままだと参加後も旧世帯のデータを読めてしまう。
   // 旧世帯が既に無い場合まで join 全体を失敗させない。
-  if (prevHid && prevHid !== uid) {
+  if (plan.removeFrom) {
     await ignoreNotFound(
-      db.collection('households').doc(prevHid)
+      db.collection('households').doc(plan.removeFrom)
         .update({ members: admin.firestore.FieldValue.arrayRemove(uid) })
     );
   }

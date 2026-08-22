@@ -152,14 +152,14 @@ export default function AppRoot() {
               householdName={currentHousehold?.name}
               members={members}
               onCreateHousehold={async (name) => {
-                await createHousehold(user.uid, name, profile.householdId);
+                await createHousehold(name);
               }}
               onJoinByCode={async (code) => {
                 // 失敗はそのまま呼び出し元へ伝える（旧クライアント直書きのフォールバックは廃止）
                 await joinByInviteCallable(code);
               }}
               onRegenerateInvite={async () => {
-                if (profile.householdId) await regenerateInviteCode(profile.householdId);
+                await regenerateInviteCode();
               }}
               onUpdateHouseholdName={async (name) => {
                 if (profile.householdId) await updateHouseholdName(profile.householdId, name);
