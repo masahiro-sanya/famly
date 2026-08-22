@@ -62,13 +62,18 @@ function randomCode(len = 6) {
   return s;
 }
 
-export async function createHousehold(userId: string, name: string) {
+export async function createHousehold(userId: string, name: string, currentHouseholdId?: string | null) {
   const ref = await addDoc(collection(db, 'households'), {
     name: name.trim() || '家族',
     inviteCode: randomCode(),
     members: [userId],
     createdAt: serverTimestamp(),
   });
+  // 旧世帯の members に残っていると、移った後も旧世帯のデータを読めてしまう
+  // （joinByInvite で塞いだのと同じ穴）。個人世帯は households を持たないので対象外。
+  if (currentHouseholdId && currentHouseholdId !== userId) {
+    await updateDoc(doc(db, 'households', currentHouseholdId), { members: arrayRemove(userId) });
+  }
   await updateDoc(doc(db, 'users', userId), { householdId: ref.id });
   return ref.id as string;
 }

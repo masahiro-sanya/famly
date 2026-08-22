@@ -214,13 +214,18 @@ export const joinByInvite = onCall({ region: 'asia-northeast1' }, async (req) =>
     : undefined;
   if (prevHid === hid) return { ok: true, householdId: hid };
 
-  // 旧世帯のメンバーから外す。残したままだと参加後も旧世帯のデータを読めてしまう。
-  if (prevHid && prevHid !== uid) {
-    await db.collection('households').doc(prevHid)
-      .update({ members: admin.firestore.FieldValue.arrayRemove(uid) });
-  }
+  // 先に新世帯へ追加してから旧世帯を外す。逆順だと2手目の失敗で
+  // どの世帯にも属さない状態が残る。
   await db.collection('households').doc(hid)
     .update({ members: admin.firestore.FieldValue.arrayUnion(uid) });
+  // 旧世帯のメンバーから外す。残したままだと参加後も旧世帯のデータを読めてしまう。
+  // 旧世帯が既に無い場合まで join 全体を失敗させない。
+  if (prevHid && prevHid !== uid) {
+    await ignoreNotFound(
+      db.collection('households').doc(prevHid)
+        .update({ members: admin.firestore.FieldValue.arrayRemove(uid) })
+    );
+  }
   await userRef.set({ householdId: hid }, { merge: true });
   logger.info('joinByInvite', { uid, from: prevHid ?? null, to: hid });
   return { ok: true, householdId: hid };

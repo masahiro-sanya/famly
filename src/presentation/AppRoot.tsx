@@ -152,7 +152,7 @@ export default function AppRoot() {
               householdName={currentHousehold?.name}
               members={members}
               onCreateHousehold={async (name) => {
-                await createHousehold(user.uid, name);
+                await createHousehold(user.uid, name, profile.householdId);
               }}
               onJoinByCode={async (code) => {
                 // 失敗はそのまま呼び出し元へ伝える（旧クライアント直書きのフォールバックは廃止）
