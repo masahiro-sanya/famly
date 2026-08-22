@@ -6,7 +6,7 @@
   },
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p tsconfig.build.json",
     "test": "jest",
     "typecheck": "tsc -p . --noEmit",
     "deploy": "npm run build && firebase deploy --only functions --config ../firebase.json",

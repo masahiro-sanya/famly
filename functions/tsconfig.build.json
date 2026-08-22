@@ -1,0 +1,5 @@
+{
+  "// note": "デプロイ用ビルド専用。テストを lib/ へ出力しないための除外だけを足す（型チェックは tsconfig.json 側でテストも見る）。",
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts"]
+}

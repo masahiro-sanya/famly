@@ -60,3 +60,11 @@ yarn-error.*
 .claude/*
 !.claude/rules/
 .serena/
+
+# Firebase エミュレーターが吐くログ
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+firebase-debug.*.log
