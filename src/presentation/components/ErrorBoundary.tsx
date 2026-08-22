@@ -4,12 +4,12 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 type Props = { children: React.ReactNode };
-type State = { error: Error | null };
+type State = { error: Error | null; resetKey: number };
 
 export class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, resetKey: 0 };
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
   }
 
@@ -19,8 +19,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   render() {
-    const { error } = this.state;
-    if (!error) return this.props.children;
+    const { error, resetKey } = this.state;
+    // error を消すだけでは同じ状態で再描画されて例外が即再発するため、
+    // key を変えて子ツリーごと作り直す。
+    if (!error) return <React.Fragment key={resetKey}>{this.props.children}</React.Fragment>;
 
     return (
       <View style={styles.container}>
@@ -29,7 +31,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <Pressable
           accessibilityRole="button"
           style={styles.button}
-          onPress={() => this.setState({ error: null })}
+          onPress={() => this.setState((s) => ({ error: null, resetKey: s.resetKey + 1 }))}
         >
           <Text style={styles.buttonLabel}>再読み込み</Text>
         </Pressable>
