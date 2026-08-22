@@ -164,6 +164,12 @@ Firebase（EXPO_PUBLIC_FIREBASE_*）
   - 役割: アカウント削除。共有世帯のメンバーから外し、本人のスタンプを削除、
     個人世帯のタスク/テンプレを削除、共有世帯のタスクは残して本人の情報のみ匿名化、
     `users/{uid}` と Auth ユーザーを削除
+- `createHousehold`
+  - 役割: 世帯の新規作成（世帯作成・`users/{uid}.householdId` 更新・旧世帯からの離脱を1トランザクション）
+  - ルールで `households` の create を禁止しているため、作成経路はこの Callable のみ
+- `regenerateInviteCode`
+  - 役割: 招待コードの再発行（呼び出し元が所属する世帯のみ）
+  - ルールで `households.inviteCode` のクライアント更新を禁止しているため、再発行経路はこの Callable のみ
 - `joinByInvite`
   - 役割: 招待コード参加（旧世帯の `members` から外し、新世帯へ追加、`users/{uid}.householdId` 更新）
   - クライアントは他世帯の `households` を読めないため、参加経路はこの Callable のみ
@@ -180,7 +186,7 @@ firebase deploy --only functions --config ../firebase.json --project <PROJECT_ID
 
 アプリからの呼び出し
 - `src/application/account.ts` … `deleteMyAccount()` を呼び出し
-- `src/application/households.ts` … `joinByInviteCallable(code)` を使用
+- `src/application/households.ts` … `createHousehold(name)` / `regenerateInviteCode()` / `joinByInviteCallable(code)` を使用
 
 ## EAS ビルド（開発/本番）
 
@@ -221,6 +227,12 @@ firebase deploy --project dev --only firestore:rules
 firebase deploy --project prod --only functions
 firebase deploy --project dev --only hosting
 ```
+
+デプロイ順（重要）
+- `functions` → `firestore:rules` → アプリ（EAS Update / ストア配信）の順に出す。
+- ルールは `households` の create と `inviteCode` の更新をクライアントに許していない。先にルールだけ出すと、
+  `createHousehold` / `regenerateInviteCode` Callable を持たない旧クライアントで
+  家族の新規作成と招待コードの再発行が失敗する。
 
 環境変数の読み込み（Hosting の privacy 生成用）
 - `scripts/prepare-privacy.js` が predeploy で `.env`, `.env.local`, `.env.production`, `.env.prod` を自動読込します。
@@ -313,7 +325,9 @@ firebase deploy --only functions --config ../firebase.json --project famly-dev-4
 
 このリポジトリに `firestore.rules` を同梱しています。内容は次の方針です。
 - users: 自分のみ read/update、初回 create も本人のみ（同一世帯メンバーの read は可）
-- households: read/write ともにメンバーのみ。参加は Callable `joinByInvite` 経由
+- households: read はメンバーのみ。create/delete は不可（作成は Callable `createHousehold` 経由）。
+  update はメンバーのみで、`members` に許される変更は「自分が抜ける」ことだけ（参加は Callable `joinByInvite` 経由）。
+  `inviteCode` の書き換えも不可（再発行は Callable `regenerateInviteCode` 経由）
 - default_tasks/items: householdメンバーのみ read/write
 - tasks: 自分の household のみ read、create は自分の householdId、update/delete も household 内に限定
 - tasks/stamps: 本人のみ create（fromUserId==uid）、削除は自分のスタンプのみ、update は不可
@@ -336,11 +350,18 @@ firebase deploy --only firestore:rules --project famly-dev-41b50
 
 ```
 npm run typecheck && npm test              # アプリ
+npm run test:rules                         # Firestore ルール（エミュレーターを自動起動）
 cd functions && npm run typecheck && npm test && npm run build
 ```
 
-- `.github/workflows/ci.yml` が push(main/develop) と PR で上記を実行する
-- 現状のテスト対象は JST 日付ユーティリティ（`src/lib/date.test.ts` / `functions/src/lib/date.test.ts`）
+- `.github/workflows/ci.yml` が push(main/develop) と PR で上記を実行する（app / functions / rules の3ジョブ）
+- テスト対象
+  - JST 日付ユーティリティ（`src/lib/date.test.ts` / `functions/src/lib/date.test.ts`）
+  - クライアントと Functions で二重に持っている JST 変換の一致（`src/lib/date.contract.test.ts`）
+  - Functions の判断ロジック（`functions/src/lib/plan.test.ts`）
+    … 当日タスクの重複防止 / アカウント削除時の削除・匿名化の振り分け / 参加時の世帯遷移 / 入力の正規化
+  - Firestore ルール（`tests/rules/firestore.rules.test.ts`、エミュレーター必須）
+- `npm run test:rules` は Java が要る（Firestore エミュレーターが JVM 上で動くため）
 - 方針は `.claude/rules/testing.md` を参照
 
 ## 開発メモ / アーキテクチャ

@@ -2,8 +2,22 @@
 
 ## 現状
 
-famly は現時点では自動テストのセットアップが未完了。
-テストフレームワーク導入時は以下の方針に従う。
+jest + ts-jest を導入済み。CI（`.github/workflows/ci.yml`）で app / functions / rules の3ジョブが回る。
+
+```bash
+npm run typecheck && npm test           # アプリ（src 配下の純ロジック）
+npm run test:rules                      # Firestore ルール（エミュレーター自動起動 / 要 Java）
+cd functions && npm test                # Cloud Functions のロジック
+```
+
+| 対象 | ファイル |
+|------|---------|
+| JST 日付ユーティリティ | `src/lib/date.test.ts` / `functions/src/lib/date.test.ts` |
+| クライアントと Functions の JST 変換の一致 | `src/lib/date.contract.test.ts` |
+| Functions の判断ロジック | `functions/src/lib/plan.test.ts` |
+| Firestore ルール | `tests/rules/firestore.rules.test.ts` |
+
+未着手はコンポーネントテスト（jest-expo プリセットの導入が要る）と E2E。
 
 ## 推奨テスト戦略
 
@@ -35,10 +49,14 @@ Cloud Functions は以下を必ずテスト：
 - `deleteMyAccount` - データ削除の完全性
 - `joinByInvite` - バリデーションとエラーケース
 
+Firestore への読み書きを含む部分はエミュレーターなしでは回せないため、
+判断ロジックを `functions/src/lib/plan.ts` に純関数として切り出し、そこをテストしている。
+Callable 本体は「切り出した判断に従って読み書きするだけ」の薄い層に保つこと。
+
 ## Firestore ルールテスト
 
 ```bash
-firebase emulators:exec --only firestore "npm test"
+npm run test:rules
 ```
 
 セキュリティルールのテストは以下を確認：
@@ -47,9 +65,9 @@ firebase emulators:exec --only firestore "npm test"
 - household メンバーシップの検証
 - stamps の作成/削除権限
 
-## 手動テスト（現状）
+## 手動テスト
 
-自動テスト未導入の間は以下を手動確認：
+自動テストで届かない UI とデバイス上の挙動は以下を手動確認：
 
 1. **認証フロー**: サインアップ → ログイン → ログアウト → パスワードリセット
 2. **タスク操作**: 作成 → 完了 → 取り消し → 削除

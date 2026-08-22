@@ -31,6 +31,14 @@ firebase deploy --only firestore:rules  # ルールデプロイ
 firebase deploy --only hosting          # Hosting デプロイ
 ```
 
+### テスト
+
+```bash
+npm run typecheck && npm test           # アプリ（純ロジック）
+npm run test:rules                      # Firestore ルール（エミュレーター自動起動 / 要 Java）
+cd functions && npm test                # Cloud Functions のロジック
+```
+
 ### Cloud Functions (functions/)
 
 ```bash
@@ -117,6 +125,8 @@ src/
 | `generateDailyTasksNow` | Callable | 手動タスク生成（検証用・自世帯のみ） |
 | `deleteMyAccount` | Callable | アカウント削除 |
 | `joinByInvite` | Callable | 招待コードで世帯参加 |
+| `createHousehold` | Callable | 世帯の新規作成（作成・所属付け替え・旧世帯離脱を1トランザクション） |
+| `regenerateInviteCode` | Callable | 招待コードの再発行（自世帯のみ） |
 
 ## 環境変数
 
