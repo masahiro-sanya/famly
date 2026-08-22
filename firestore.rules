@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function isMember(hid) {
+      return hid == uid() || (
+        exists(/databases/$(db)/documents/households/$(hid)) &&
+        uid() in get(/databases/$(db)/documents/households/$(hid)).data.members
+      );
+    }
+    /**
+     * households の update で members に許される変更は「自分が抜ける」ことだけ。
+     * 追加は Callable(joinByInvite / createHousehold) の admin 権限のみが行う。
+     */
+    function membersChangeAllowed() {
+      return request.resource.data.members.toSet()
+               .difference(resource.data.members.toSet()).size() == 0
+        && resource.data.members.toSet()
+               .difference(request.resource.data.members.toSet()).hasOnly([uid()]);
+    }
+
+    /**
+     * 招待コードは世帯に入るための合言葉。クライアントから書き換えられると
+     * 推測しやすい値に差し替えられるため、再発行は Callable に一本化する。
+     */
+    function inviteCodeUnchanged() {
+      return request.resource.data.inviteCode == resource.data.inviteCode;
+    }
+
+    // users: 自分のみ参照・更新可。初回作成も本人のみ許可。
+    match /users/{userId} {
+      // 自分のドキュメントは作成可
+      allow create: if signedIn() && userId == uid();
+      // 読み取りは「自分」または「同じhouseholdのメンバー」を許可（メンバー一覧表示のため）
+      allow read: if signedIn() && (userId == uid() || isMember(resource.data.householdId));
+      // 更新は本人のみ（名前など）
+      allow update: if signedIn() && userId == uid();
+      allow delete: if false;
+    }
+
+    // households: 招待コードでの参加は Callable(joinByInvite) 経由に一本化したため、
+    // read はメンバー限定。これにより他世帯の inviteCode が全ユーザーに見える状態を防ぐ。
+    match /households/{hid} {
+      allow read: if signedIn() && isMember(hid);
+      // 作成は Callable(createHousehold) の admin 権限のみ。クライアントから直接作らせると
+      // 旧世帯からの離脱と users.householdId 更新を1トランザクションにできない。
+      allow create: if false;
+      // メンバー追加は Callable(joinByInvite / createHousehold) の admin 権限だけが行う。
+      // クライアントからの update で members を増やせると、メンバーの1人が
+      // 世帯外のユーザーへ読み取り権限を配れてしまう。他人を蹴り出すのも禁止し、
+      // 許すのは退出（自分自身の削除）と members 以外のフィールド更新のみ。
+      allow update: if signedIn() && isMember(hid)
+        && membersChangeAllowed() && inviteCodeUnchanged();
+      allow delete: if false;
+    }
+
+    // default_tasks: householdメンバーのみ参照・更新可（itemsサブコレクションも同様）。
+    match /default_tasks/{hid} {
+      allow read, write: if signedIn() && isMember(hid);
+      match /items/{docId} {
+        allow read, write: if signedIn() && isMember(hid);
+      }
+    }
+
+    // tasks: 自分のhouseholdスコープのみ。作成は自分のhouseholdIdでのみ許可。
+    match /tasks/{taskId} {
+      allow read: if signedIn() && isMember(resource.data.householdId);
+      allow create: if signedIn() && isMember(request.resource.data.householdId);
+      allow update, delete: if signedIn() && isMember(resource.data.householdId);
+
+      // stamps: 作成は本人のみ（fromUserId==uid）。更新/削除は不可（1ユーザー1種類1回）。
+      match /stamps/{sid} {
+        allow create: if signedIn()
+          && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId)
+          && request.resource.data.fromUserId == uid();
+        allow read: if signedIn()
+          && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId);
+        // toggle目的: 自分が付けたスタンプのみ削除可
+        allow delete: if signedIn()
+          && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId)
+          && resource.data.fromUserId == uid();
+        allow update: if false;
+      }
+    }
+  }
+}

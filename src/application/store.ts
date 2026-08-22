@@ -1,6 +1,7 @@
-import create from 'zustand';
+// UI用の極小Zustandストア（タブ状態/編集中フラグのみ）。
+import { create } from 'zustand/react';
 
-type Tab = 'tasks' | 'profile' | 'settings';
+type Tab = 'tasks' | 'defaults' | 'profile' | 'settings';
 
 type UIState = {
   tab: Tab;
@@ -15,4 +16,3 @@ export const useUIStore = create<UIState>((set) => ({
   setTab: (tab) => set({ tab }),
   setEditingTask: (isEditingTask) => set({ isEditingTask }),
 }));
-

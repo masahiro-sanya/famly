@@ -42,3 +42,29 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Functions build outputs
+/functions/lib/
+
+# Local temporary docs (not tracked)
+/docs/_local/
+
+# Generated Hosting files
+/hosting/privacy/index.html
+
+# Firebase CLI local state (do not version this)
+/.firebase/
+
+# AI/IDE tools
+# CLAUDE.md / AGENTS.md から参照するルールは共有し、ローカル設定だけ除外する
+.claude/*
+!.claude/rules/
+.serena/
+
+# Firebase エミュレーターが吐くログ
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+firebase-debug.*.log

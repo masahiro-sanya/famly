@@ -1,0 +1,25 @@
+{
+  "name": "famly-functions",
+  "private": true,
+  "engines": {
+    "node": "^20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "jest",
+    "typecheck": "tsc -p . --noEmit",
+    "deploy": "npm run build && firebase deploy --only functions --config ../firebase.json",
+    "serve": "npm run build && firebase emulators:start --only functions --config ../firebase.json"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.5.0",
+    "firebase-functions": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.4.0"
+  }
+}
