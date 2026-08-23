@@ -28,6 +28,33 @@ service cloud.firestore {
       return request.resource.data.inviteCode == resource.data.inviteCode;
     }
 
+    /** default_tasks/items の最低限のバリデーション（title / daysOfWeek）。 */
+    function defaultTaskShapeOk() {
+      return request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 200
+        && request.resource.data.daysOfWeek is list
+        && request.resource.data.daysOfWeek.size() <= 7;
+    }
+
+    /**
+     * タスクの帰属（どの世帯の・誰の・いつの）は作成後に変えられない。
+     * update 前の householdId だけで権限判定していると、自世帯のタスクを
+     * 他世帯の householdId へ書き換えて別世帯にドキュメントを注入できてしまう。
+     */
+    function taskOwnershipUnchanged() {
+      return request.resource.data.householdId == resource.data.householdId
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.dateKey == resource.data.dateKey
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    /** リアクションの種類。reactions.{type} のフィールド名になるため任意文字列は許さない。 */
+    function stampTypeOk() {
+      return request.resource.data.type in
+        ['thanks', 'like', 'party', 'heart', 'smile', 'sparkles'];
+    }
+
     // users: 自分のみ参照・更新可。初回作成も本人のみ許可。
     match /users/{userId} {
       // 自分のドキュメントは作成可
@@ -59,21 +86,30 @@ service cloud.firestore {
     match /default_tasks/{hid} {
       allow read, write: if signedIn() && isMember(hid);
       match /items/{docId} {
-        allow read, write: if signedIn() && isMember(hid);
+        allow read, delete: if signedIn() && isMember(hid);
+        // 型とサイズだけ最低限そろえる。テンプレは毎朝の自動生成で読まれるため、
+        // 巨大配列や想定外の型が混ざると generateDailyTasks 側が壊れる。
+        allow create, update: if signedIn() && isMember(hid) && defaultTaskShapeOk();
       }
     }
 
     // tasks: 自分のhouseholdスコープのみ。作成は自分のhouseholdIdでのみ許可。
     match /tasks/{taskId} {
       allow read: if signedIn() && isMember(resource.data.householdId);
-      allow create: if signedIn() && isMember(request.resource.data.householdId);
-      allow update, delete: if signedIn() && isMember(resource.data.householdId);
+      // 作成者は自分自身に限る（同じ世帯の別メンバーになりすませないようにする）。
+      allow create: if signedIn()
+        && isMember(request.resource.data.householdId)
+        && request.resource.data.userId == uid();
+      allow update: if signedIn() && isMember(resource.data.householdId)
+        && taskOwnershipUnchanged();
+      allow delete: if signedIn() && isMember(resource.data.householdId);
 
       // stamps: 作成は本人のみ（fromUserId==uid）。更新/削除は不可（1ユーザー1種類1回）。
       match /stamps/{sid} {
         allow create: if signedIn()
           && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId)
-          && request.resource.data.fromUserId == uid();
+          && request.resource.data.fromUserId == uid()
+          && stampTypeOk();
         allow read: if signedIn()
           && isMember(get(/databases/$(db)/documents/tasks/$(taskId)).data.householdId);
         // toggle目的: 自分が付けたスタンプのみ削除可

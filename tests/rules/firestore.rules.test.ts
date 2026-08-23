@@ -26,6 +26,8 @@ const BOB = 'bob';
 const MALLORY = 'mallory';
 const H1 = 'h1';
 const H_SOLO = 'h-solo';
+// タスクの createdAt。作成後に書き換えられないことを確かめるため固定値を使う。
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
 
 let testEnv: RulesTestEnvironment;
 
@@ -60,10 +62,12 @@ beforeEach(async () => {
     });
     await setDoc(doc(db, 'tasks', 'shared1'), {
       title: '洗濯', householdId: H1, userId: ALICE, status: 'pending', dateKey: '2026-01-01',
+      createdAt: CREATED_AT,
     });
     await setDoc(doc(db, 'tasks', 'shared1', 'stamps', 's-alice'), { fromUserId: ALICE, type: 'thanks' });
     await setDoc(doc(db, 'tasks', 'personal1'), {
       title: '個人', householdId: MALLORY, userId: MALLORY, status: 'pending', dateKey: '2026-01-01',
+      createdAt: CREATED_AT,
     });
     await setDoc(doc(db, 'default_tasks', H1, 'items', 'd1'), { title: 'ゴミ出し', daysOfWeek: [1] });
   });
@@ -195,6 +199,34 @@ describe('tasks', () => {
   it('未認証は読めない', async () => {
     await assertFails(getDoc(doc(asAnon(), 'tasks', 'shared1')));
   });
+
+  it('自世帯のタスクを別世帯へ付け替えられない（クロステナント注入）', async () => {
+    await assertFails(updateDoc(doc(asMallory(), 'tasks', 'personal1'), { householdId: H1 }));
+    await assertFails(updateDoc(doc(asAlice(), 'tasks', 'shared1'), { householdId: MALLORY }));
+  });
+
+  it('作成者(userId)は後から書き換えられない', async () => {
+    await assertFails(updateDoc(doc(asBob(), 'tasks', 'shared1'), { userId: BOB }));
+  });
+
+  it('dateKey / createdAt は後から書き換えられない', async () => {
+    await assertFails(updateDoc(doc(asAlice(), 'tasks', 'shared1'), { dateKey: '2026-02-02' }));
+    await assertFails(updateDoc(doc(asAlice(), 'tasks', 'shared1'), {
+      createdAt: new Date('2020-01-01T00:00:00.000Z'),
+    }));
+  });
+
+  it('帰属を変えない更新（完了・リアクション）はこれまでどおり通る', async () => {
+    await assertSucceeds(updateDoc(doc(asBob(), 'tasks', 'shared1'), {
+      status: 'done', completedByUserId: BOB, thanksCount: 1,
+    }));
+  });
+
+  it('同じ世帯でも他人の名義ではタスクを作れない', async () => {
+    await assertFails(setDoc(doc(asBob(), 'tasks', 'spoof1'), {
+      title: 'なりすまし', householdId: H1, userId: ALICE, status: 'pending', dateKey: '2026-01-01',
+    }));
+  });
 });
 
 describe('tasks/stamps', () => {
@@ -225,6 +257,24 @@ describe('tasks/stamps', () => {
   it('スタンプの更新はできない（1ユーザー1種類1回）', async () => {
     await assertFails(updateDoc(doc(asAlice(), 'tasks', 'shared1', 'stamps', 's-alice'), { type: 'heart' }));
   });
+
+  it('想定外の type は付けられない（reactions.{type} のフィールド名になるため）', async () => {
+    await assertFails(setDoc(doc(asBob(), 'tasks', 'shared1', 'stamps', 's-bad'), {
+      fromUserId: BOB, type: 'evil.nested',
+    }));
+    await assertSucceeds(setDoc(doc(asBob(), 'tasks', 'shared1', 'stamps', 's-heart'), {
+      fromUserId: BOB, type: 'heart',
+    }));
+  });
+});
+
+describe('join_attempts（招待コードの試行回数）', () => {
+  it('クライアントからは読めない・書けない（Functions 専用）', async () => {
+    await assertFails(getDoc(doc(asAlice(), 'join_attempts', ALICE)));
+    await assertFails(setDoc(doc(asAlice(), 'join_attempts', ALICE), {
+      attemptCount: 0, firstAttemptAtMs: 0,
+    }));
+  });
 });
 
 describe('default_tasks', () => {
@@ -240,5 +290,21 @@ describe('default_tasks', () => {
     await assertFails(setDoc(doc(asMallory(), 'default_tasks', H1, 'items', 'd3'), {
       title: '侵入', daysOfWeek: [3],
     }));
+  });
+
+  it('title / daysOfWeek の型とサイズが外れた書き込みは弾く', async () => {
+    await assertFails(setDoc(doc(asBob(), 'default_tasks', H1, 'items', 'bad1'), {
+      title: 123, daysOfWeek: [1],
+    }));
+    await assertFails(setDoc(doc(asBob(), 'default_tasks', H1, 'items', 'bad2'), {
+      title: 'x'.repeat(201), daysOfWeek: [1],
+    }));
+    await assertFails(setDoc(doc(asBob(), 'default_tasks', H1, 'items', 'bad3'), {
+      title: '曜日が多すぎる', daysOfWeek: [0, 1, 2, 3, 4, 5, 6, 7],
+    }));
+  });
+
+  it('メンバーは削除できる', async () => {
+    await assertSucceeds(deleteDoc(doc(asBob(), 'default_tasks', H1, 'items', 'd1')));
   });
 });
