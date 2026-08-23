@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Alert } from 'react-native';
 import { Button, Card, Text, TextInput, useTheme } from 'react-native-paper';
 import { signIn, signUp, resetPassword } from '../../application/auth';
+import { authErrorMessage, SIGN_IN_ERRORS, SIGN_UP_ERRORS } from '../../application/authError';
 import type { FamlyTheme } from '../theme';
 
 export function AuthForm() {
@@ -18,8 +19,8 @@ export function AuthForm() {
     try {
       setError(null);
       await signIn(email.trim(), password);
-    } catch (e: any) {
-      setError(e?.message ?? 'Sign in failed');
+    } catch (e) {
+      setError(authErrorMessage(e, 'ログインに失敗しました', SIGN_IN_ERRORS));
     }
   };
 
@@ -27,8 +28,8 @@ export function AuthForm() {
     try {
       setError(null);
       await signUp(email.trim(), password);
-    } catch (e: any) {
-      setError(e?.message ?? 'Sign up failed');
+    } catch (e) {
+      setError(authErrorMessage(e, '新規登録に失敗しました', SIGN_UP_ERRORS));
     }
   };
 
@@ -42,8 +43,8 @@ export function AuthForm() {
         'パスワードリセット用のメールを送信しました。メールをご確認ください。',
         [{ text: 'OK' }]
       );
-    } catch (e: any) {
-      setError(e?.message ?? 'パスワードリセットに失敗しました');
+    } catch (e) {
+      setError(authErrorMessage(e, 'パスワードリセットに失敗しました'));
     } finally {
       setIsResetting(false);
     }
