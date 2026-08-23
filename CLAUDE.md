@@ -7,7 +7,7 @@ famly リポジトリで Claude Code が作業する際のガイドライン。
 **famly** は家族向けタスク共有アプリ。Expo (React Native) + Firebase (Firestore / Auth / Functions / Hosting) で構成。
 
 - `src/` - クライアントアプリ (Expo / React Native / TypeScript)
-- `functions/` - Cloud Functions (Node.js 20, Firebase 2nd Gen)
+- `functions/` - Cloud Functions (Node.js 22, Firebase 2nd Gen)
 - `firestore.rules` - Firestore セキュリティルール
 - `hosting/` - Firebase Hosting（プライバシーポリシーページ等）
 
@@ -116,6 +116,7 @@ src/
 | `tasks/{taskId}` | タスク (title, status, householdId, dateKey) |
 | `tasks/{taskId}/stamps/{sid}` | リアクションスタンプ |
 | `default_tasks/{hid}/items/{docId}` | テンプレートタスク (daysOfWeek) |
+| `join_attempts/{uid}` | 招待コードの試行回数（Functions 専用。ルール未定義＝クライアントからは不可） |
 
 ## Cloud Functions
 

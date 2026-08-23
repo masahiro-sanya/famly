@@ -134,3 +134,34 @@ export function planJoin(params: {
   const removeFrom = prevHid && prevHid !== uid && prevHid !== hid ? prevHid : null;
   return { alreadyJoined: false, addToNew: true, removeFrom };
 }
+
+/** 招待コードの試行をこの回数まで許す（同一ユーザー・同一ウィンドウ内）。 */
+export const JOIN_MAX_ATTEMPTS = 10;
+
+/** 試行カウントの有効期間（ミリ秒）。この時間を過ぎたら 0 に戻す。 */
+export const JOIN_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
+
+export type JoinAttemptState = { attemptCount: number; firstAttemptAtMs: number };
+
+/**
+ * 招待コードは 32^6 通りある一方、Callable は認証さえ通れば何度でも叩ける。
+ * 総当たりで他世帯に入られないよう、ユーザー単位で試行回数を制限する。
+ * 数えるのは「誤入力」ではなく「試行」。当たったかどうかを見てから数えると、
+ * 数え上げと照合の間に並行リクエストを差し込めて回数を誤魔化せる。
+ */
+export function isJoinBlocked(state: JoinAttemptState | null, nowMs: number): boolean {
+  if (!state) return false;
+  if (nowMs - state.firstAttemptAtMs >= JOIN_ATTEMPT_WINDOW_MS) return false;
+  return state.attemptCount >= JOIN_MAX_ATTEMPTS;
+}
+
+/** 試行を1回記録したあとの状態。ウィンドウを過ぎていれば数え直す。 */
+export function nextJoinAttempt(
+  state: JoinAttemptState | null,
+  nowMs: number
+): JoinAttemptState {
+  if (!state || nowMs - state.firstAttemptAtMs >= JOIN_ATTEMPT_WINDOW_MS) {
+    return { attemptCount: 1, firstAttemptAtMs: nowMs };
+  }
+  return { attemptCount: state.attemptCount + 1, firstAttemptAtMs: state.firstAttemptAtMs };
+}
