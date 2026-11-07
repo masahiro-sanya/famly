@@ -8,7 +8,7 @@
   - expo / react / react-native / firebase
   - UI: react-native-paper、状態管理: zustand
 - エントリ: `index.ts` → `App.tsx`（`SafeAreaProvider` + `ErrorBoundary` → `AppRoot`）
-- サーバー: `functions/`（Cloud Functions 2nd Gen / Node.js 20）
+- サーバー: `functions/`（Cloud Functions 2nd Gen / Node.js 22）
 - 設定: `app.json`（iOS/Android/Web の基本設定）、`firestore.rules`、`firestore.indexes.json`
 
 ## 2. 開発・実行

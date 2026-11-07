@@ -2,7 +2,11 @@ import {
   DEFAULT_HOUSEHOLD_NAME,
   INVITE_ALPHABET,
   INVITE_CODE_LENGTH,
+  JOIN_ATTEMPT_WINDOW_MS,
+  JOIN_MAX_ATTEMPTS,
   inviteCodeFromBytes,
+  isJoinBlocked,
+  nextJoinAttempt,
   normalizeHouseholdName,
   normalizeInviteCode,
   planDailyTitles,
@@ -192,5 +196,40 @@ describe('inviteCodeFromBytes', () => {
 
   it('文字集合が256の約数なので剰余の偏りが出ない', () => {
     expect(256 % INVITE_ALPHABET.length).toBe(0);
+  });
+});
+
+describe('招待コードの試行回数制限', () => {
+  const T0 = 1_700_000_000_000;
+
+  it('記録が無ければブロックしない', () => {
+    expect(isJoinBlocked(null, T0)).toBe(false);
+  });
+
+  it('上限未満はブロックしない', () => {
+    expect(isJoinBlocked({ attemptCount: JOIN_MAX_ATTEMPTS - 1, firstAttemptAtMs: T0 }, T0)).toBe(false);
+  });
+
+  it('ウィンドウ内で上限に達したらブロックする', () => {
+    expect(isJoinBlocked({ attemptCount: JOIN_MAX_ATTEMPTS, firstAttemptAtMs: T0 }, T0 + 1000)).toBe(true);
+  });
+
+  it('ウィンドウを過ぎればブロックは解ける', () => {
+    const state = { attemptCount: JOIN_MAX_ATTEMPTS + 5, firstAttemptAtMs: T0 };
+    expect(isJoinBlocked(state, T0 + JOIN_ATTEMPT_WINDOW_MS)).toBe(false);
+  });
+
+  it('初回の試行はカウント1で始まる', () => {
+    expect(nextJoinAttempt(null, T0)).toEqual({ attemptCount: 1, firstAttemptAtMs: T0 });
+  });
+
+  it('ウィンドウ内の試行は積み上がる（起点は動かさない）', () => {
+    expect(nextJoinAttempt({ attemptCount: 3, firstAttemptAtMs: T0 }, T0 + 60_000))
+      .toEqual({ attemptCount: 4, firstAttemptAtMs: T0 });
+  });
+
+  it('ウィンドウを過ぎたら数え直す', () => {
+    expect(nextJoinAttempt({ attemptCount: 9, firstAttemptAtMs: T0 }, T0 + JOIN_ATTEMPT_WINDOW_MS))
+      .toEqual({ attemptCount: 1, firstAttemptAtMs: T0 + JOIN_ATTEMPT_WINDOW_MS });
   });
 });

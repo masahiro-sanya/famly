@@ -27,6 +27,8 @@ export function callableErrorMessage(
 export const JOIN_ERRORS: Readonly<Record<string, string>> = {
   'functions/not-found': '招待コードが見つかりません',
   'functions/invalid-argument': '招待コードを入力してください',
+  'functions/resource-exhausted':
+    '招待コードの入力を続けて間違えました。しばらく時間をおいて再度お試しください',
 };
 
 export const REGENERATE_INVITE_ERRORS: Readonly<Record<string, string>> = {

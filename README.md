@@ -173,6 +173,7 @@ Firebase（EXPO_PUBLIC_FIREBASE_*）
 - `joinByInvite`
   - 役割: 招待コード参加（旧世帯の `members` から外し、新世帯へ追加、`users/{uid}.householdId` 更新）
   - クライアントは他世帯の `households` を読めないため、参加経路はこの Callable のみ
+  - 同一ユーザーの試行が10分間に10回を超えたら一時的に受け付けない（総当たり対策。記録は `join_attempts/{uid}`）
 - `generateDailyTasksNow`
   - 役割: 当日分タスクの手動生成（検証用）。生成先は呼び出し元自身の世帯に限定
 
@@ -272,7 +273,7 @@ eas submit -p ios --latest
 
 ## Functions（雛形）
 - 本リポジトリ `functions/` に雛形を同梱
-  - `functions/src/index.ts`: 05:00 JSTに `default_tasks` から当日分を `tasks` へ生成（Functions 2nd Gen / Node.js 20）
+  - `functions/src/index.ts`: 05:00 JSTに `default_tasks` から当日分を `tasks` へ生成（Functions 2nd Gen / Node.js 22）
   - 手順（例）
     1. Firebase CLI をセットアップ（ローカル）
     2. `cd functions && npm install`
@@ -294,7 +295,7 @@ eas submit -p ios --latest
 - ルートで `.firebaserc` を設定（本リポジトリは dev を default に設定済み）
 - 明示切替: `firebase use dev` または `firebase use prod`
 
-3) デプロイ（dev の例｜Node.js 20 / Functions v2）
+3) デプロイ（dev の例｜Node.js 22 / Functions v2）
 ```
 cd functions
 npm install
@@ -328,9 +329,14 @@ firebase deploy --only functions --config ../firebase.json --project famly-dev-4
 - households: read はメンバーのみ。create/delete は不可（作成は Callable `createHousehold` 経由）。
   update はメンバーのみで、`members` に許される変更は「自分が抜ける」ことだけ（参加は Callable `joinByInvite` 経由）。
   `inviteCode` の書き換えも不可（再発行は Callable `regenerateInviteCode` 経由）
-- default_tasks/items: householdメンバーのみ read/write
-- tasks: 自分の household のみ read、create は自分の householdId、update/delete も household 内に限定
-- tasks/stamps: 本人のみ create（fromUserId==uid）、削除は自分のスタンプのみ、update は不可
+- default_tasks/items: householdメンバーのみ read/write。書き込みは `title`（1〜200文字の文字列）と
+  `daysOfWeek`（7要素までの配列）の型・サイズだけ検証する
+- tasks: 自分の household のみ read、create は自分の householdId かつ `userId` が自分自身、
+  update/delete も household 内に限定。`householdId` / `userId` / `dateKey` / `createdAt` は作成後に変更不可
+  （更新前の値だけで判定していると、自世帯のタスクを他世帯へ付け替えて注入できてしまう）
+- tasks/stamps: 本人のみ create（fromUserId==uid）、`type` は既定の6種のみ、
+  削除は自分のスタンプのみ、update は不可
+- join_attempts: 一切のクライアントアクセス不可（招待コードの試行回数を Functions が記録する）
 
 適用コマンド（dev例）:
 ```

@@ -1,7 +1,7 @@
 {
   "functions": {
     "source": "functions",
-    "runtime": "nodejs20",
+    "runtime": "nodejs22",
     "predeploy": [
       "npm --prefix \"$RESOURCE_DIR\" ci || npm --prefix \"$RESOURCE_DIR\" install",
       "npm --prefix \"$RESOURCE_DIR\" run build"
@@ -20,6 +20,19 @@
     ],
     "predeploy": [
       "node scripts/prepare-privacy.js"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "Referrer-Policy", "value": "no-referrer" },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+          }
+        ]
+      }
     ]
   },
   "emulators": {

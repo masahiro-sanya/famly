@@ -1,4 +1,4 @@
-// default_tasks から当日分の tasks を生成する Cloud Functions (2nd Gen, Node.js 20)。
+// default_tasks から当日分の tasks を生成する Cloud Functions (2nd Gen, Node.js 22)。
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
@@ -7,7 +7,10 @@ import { randomBytes } from 'crypto';
 import { todayKeyJST, todayWeekdayJST } from './lib/date';
 import {
   INVITE_CODE_LENGTH,
+  JoinAttemptState,
   inviteCodeFromBytes,
+  isJoinBlocked,
+  nextJoinAttempt,
   normalizeHouseholdName,
   normalizeInviteCode,
   planDailyTitles,
@@ -20,6 +23,8 @@ const db = admin.firestore();
 
 /** Firestore の1バッチあたりの書き込み上限 */
 const BATCH_LIMIT = 500;
+/** 招待コードの試行回数。クライアントからは読み書きさせない（ルールで未定義＝拒否）。 */
+const JOIN_ATTEMPTS_COLLECTION = 'join_attempts';
 /** スケジュール実行時に同時処理する household 数の上限 */
 const HOUSEHOLD_CONCURRENCY = 10;
 
@@ -304,6 +309,24 @@ export const joinByInvite = onCall({ region: 'asia-northeast1' }, async (req) =>
   const code = normalizeInviteCode(req.data?.code);
   if (!code) throw new HttpsError('invalid-argument', 'code is required');
 
+  // 招待コードは合言葉なので、当てずっぽうを繰り返せば他世帯に入れてしまう。
+  // ユーザー単位で試行回数を数え、続けば一定時間受け付けない。
+  // 読み取りと加算はトランザクションで閉じる。分けて書くと、同一ユーザーの
+  // 並行リクエストが揃って古い値を読み、回数を実際より少なく記録できてしまう。
+  const attemptRef = db.collection(JOIN_ATTEMPTS_COLLECTION).doc(uid);
+  const now = Date.now();
+  const blocked = await db.runTransaction(async (tx) => {
+    const attemptSnap = await tx.get(attemptRef);
+    const attempt = attemptSnap.exists ? (attemptSnap.data() as JoinAttemptState) : null;
+    if (isJoinBlocked(attempt, now)) return true;
+    tx.set(attemptRef, nextJoinAttempt(attempt, now));
+    return false;
+  });
+  if (blocked) {
+    logger.warn('joinByInvite throttled', { uid });
+    throw new HttpsError('resource-exhausted', 'too many invalid invite codes');
+  }
+
   const snap = await db.collection('households').where('inviteCode', '==', code).limit(1).get();
   if (snap.empty) throw new HttpsError('not-found', 'invalid invite code');
   const householdDoc = snap.docs[0];
@@ -317,7 +340,10 @@ export const joinByInvite = onCall({ region: 'asia-northeast1' }, async (req) =>
     : undefined;
 
   const plan = planJoin({ uid, hid, members, prevHid });
-  if (plan.alreadyJoined) return { ok: true, householdId: hid };
+  if (plan.alreadyJoined) {
+    await clearJoinAttempts(attemptRef, uid);
+    return { ok: true, householdId: hid };
+  }
 
   // 先に新世帯へ追加してから旧世帯を外す。逆順だと2手目の失敗で
   // どの世帯にも属さない状態が残る。
@@ -334,6 +360,22 @@ export const joinByInvite = onCall({ region: 'asia-northeast1' }, async (req) =>
     );
   }
   await userRef.set({ householdId: hid }, { merge: true });
+  await clearJoinAttempts(attemptRef, uid);
   logger.info('joinByInvite', { uid, from: prevHid ?? null, to: hid });
   return { ok: true, householdId: hid };
 });
+
+/**
+ * 参加できたユーザーの試行カウントを消す（次の招待で残数が減っていないように）。
+ * 参加自体は既に完了しているので、掃除の失敗で join を失敗扱いにはしない。
+ */
+async function clearJoinAttempts(
+  ref: admin.firestore.DocumentReference,
+  uid: string
+): Promise<void> {
+  try {
+    await ref.delete();
+  } catch (e) {
+    logger.warn('failed to clear join attempts', { uid, error: String(e) });
+  }
+}

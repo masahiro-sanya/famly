@@ -20,6 +20,11 @@ describe('callableErrorMessage', () => {
     expect(callableErrorMessage(e, '既定', REGENERATE_INVITE_ERRORS)).toBe('家族が見つかりません');
   });
 
+  it('試行回数の制限に掛かったら待つよう促す', () => {
+    expect(callableErrorMessage({ code: 'functions/resource-exhausted' }, '既定', JOIN_ERRORS))
+      .toBe('招待コードの入力を続けて間違えました。しばらく時間をおいて再度お試しください');
+  });
+
   it('対応表にないコードは既定文言（開発者向けメッセージを画面に出さない）', () => {
     expect(callableErrorMessage({ code: 'functions/internal', message: 'not a member' }, '既定'))
       .toBe('既定');

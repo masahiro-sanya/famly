@@ -64,7 +64,14 @@ export async function signOut(): Promise<void> {
 }
 
 export async function resetPassword(email: string): Promise<void> {
-  await sendPasswordResetEmail(auth, email);
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (e) {
+    // 未登録のメールでも成功と同じ扱いにする。ここでエラーを返すと、
+    // 任意のメールアドレスが登録済みかどうかを外部から判定できてしまう。
+    if ((e as { code?: string } | null)?.code === 'auth/user-not-found') return;
+    throw e;
+  }
 }
 
 export async function updateProfileName(userId: string, name: string): Promise<void> {
