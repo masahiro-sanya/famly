@@ -2,5 +2,15 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  "// exclude": "functions/ は独自の tsconfig と依存を持つ別パッケージ。ここで巻き込むと、functions の依存が入っていない環境（CI の app ジョブ等）で型解決できず落ちる。",
+  "exclude": [
+    "node_modules",
+    "functions",
+    "babel.config.js",
+    "metro.config.js",
+    "jest.config.js",
+    "android",
+    "ios"
+  ]
 }

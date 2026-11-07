@@ -1,15 +1,21 @@
+// 認証状態とプロフィール(users/{uid})の購読・更新。
 import { useEffect, useState } from 'react';
 import { auth, db } from '../infrastructure/firebaseClient';
 import {
   User,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as fbSignOut,
 } from 'firebase/auth';
 import { UserProfile } from '../domain/models';
 import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 
+/**
+ * Firebase Auth のログイン状態と、対応する users/{uid} を購読する。
+ * 初回ログイン時は users/{uid} をデフォルト値で作成する。
+ */
 export function useAuthState() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -45,26 +51,34 @@ export function useAuthState() {
   return { user, profile } as const;
 }
 
-export async function signIn(email: string, password: string) {
+export async function signIn(email: string, password: string): Promise<void> {
   await signInWithEmailAndPassword(auth, email, password);
 }
 
-export async function signUp(email: string, password: string) {
+export async function signUp(email: string, password: string): Promise<void> {
   await createUserWithEmailAndPassword(auth, email, password);
 }
 
-export async function signOut() {
+export async function signOut(): Promise<void> {
   await fbSignOut(auth);
 }
 
-export async function updateProfileName(userId: string, name: string) {
+export async function resetPassword(email: string): Promise<void> {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (e) {
+    // 未登録のメールでも成功と同じ扱いにする。ここでエラーを返すと、
+    // 任意のメールアドレスが登録済みかどうかを外部から判定できてしまう。
+    if ((e as { code?: string } | null)?.code === 'auth/user-not-found') return;
+    throw e;
+  }
+}
+
+export async function updateProfileName(userId: string, name: string): Promise<void> {
   await updateDoc(doc(db, 'users', userId), { name });
 }
 
-export async function updateHouseholdId(userId: string, householdId: string) {
-  await updateDoc(doc(db, 'users', userId), { householdId });
-}
-
+// Firestore: ドキュメントがなければ set、あれば update。
 async function updateDocOrSet(ref: ReturnType<typeof doc>, data: Record<string, any>) {
   const snap = await getDoc(ref);
   if (snap.exists()) {
@@ -74,4 +88,3 @@ async function updateDocOrSet(ref: ReturnType<typeof doc>, data: Record<string, 
     await setDoc(ref, data);
   }
 }
-

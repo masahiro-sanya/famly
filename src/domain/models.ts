@@ -19,3 +19,10 @@ export type Task = {
   completedByUserId?: string;
   completedByName?: string;
 };
+
+export type DefaultTask = {
+  id: string;
+  title: string;
+  daysOfWeek: number[]; // 0=Sun ... 6=Sat
+  order?: number;
+};

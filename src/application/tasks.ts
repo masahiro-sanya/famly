@@ -1,3 +1,5 @@
+// タスクの取得・作成・更新・リアクション関連のユースケース。
+// 当日表示用に dateKey(YYYY-MM-DD) で絞り込みます。
 import { useEffect, useState } from 'react';
 import { db } from '../infrastructure/firebaseClient';
 import { getTodayKey } from '../lib/date';
@@ -19,6 +21,11 @@ import {
 } from 'firebase/firestore';
 import { Task } from '../domain/models';
 
+/**
+ * household + dateKey（既定は今日）でタスク一覧を購読する。
+ * 必要な複合インデックス: householdId, dateKey, createdAt desc。
+ * インデックス未作成時は orderBy を外してフォールバックする。
+ */
 export function useTasks(householdId?: string | null, dateKey: string = getTodayKey()) {
   const [tasks, setTasks] = useState<Task[]>([]);
   useEffect(() => {
@@ -26,7 +33,7 @@ export function useTasks(householdId?: string | null, dateKey: string = getToday
       setTasks([]);
       return;
     }
-    // メイン: インデックス利用（householdId ==, createdAt desc）
+    // メイン: インデックス利用（householdId ==, dateKey ==, createdAt desc）
     const q1 = query(
       collection(db, 'tasks'),
       where('householdId', '==', householdId),
@@ -77,6 +84,7 @@ export async function addTask(params: {
   userId: string;
   householdId: string;
 }) {
+  // 新規タスクを当日(dateKey)・pendingで作成。
   await addDoc(collection(db, 'tasks'), {
     title: params.title.trim(),
     userId: params.userId,
@@ -89,16 +97,21 @@ export async function addTask(params: {
   });
 }
 
+/** タイトルを更新 */
 export async function updateTaskTitle(taskId: string, title: string) {
   const ref = doc(db, 'tasks', taskId);
   await updateDoc(ref, { title: title.trim() });
 }
 
+/** ドキュメントを削除 */
 export async function deleteTask(taskId: string) {
   const ref = doc(db, 'tasks', taskId);
   await deleteDoc(ref);
 }
 
+/**
+ * ステータスを更新。done時は completedAt/By を付与、pendingに戻すと除去。
+ */
 export async function updateTaskStatus(
   taskId: string,
   status: 'done' | 'pending',
@@ -122,6 +135,11 @@ export async function updateTaskStatus(
   }
 }
 
+/**
+ * リアクションをトグル追加/削除。
+ * サブコレクション: tasks/{taskId}/stamps/{fromUserId}_{type}
+ * カウントは reactions.{type} をインクリメント/デクリメント。
+ */
 export async function addReaction(
   taskId: string,
   fromUserId: string,

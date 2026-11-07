@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Button, StyleSheet, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View } from 'react-native';
+import { Card, IconButton, TextInput, useTheme } from 'react-native-paper';
+import type { FamlyTheme } from '../theme';
 
 export function InputBar({
   onSubmit,
@@ -8,59 +10,45 @@ export function InputBar({
   onSubmit: (text: string) => void;
   placeholder?: string;
 }) {
+  const { colors } = useTheme<FamlyTheme>();
   const [text, setText] = useState('');
+  const submit = () => {
+    const v = text.trim();
+    if (!v) return;
+    onSubmit(v);
+    setText('');
+  };
+
+  const styles = useMemo(() => ({
+    wrapper: { position: 'absolute' as const, left: 16, right: 16, bottom: 16 },
+    bar: { borderRadius: 16 },
+    row: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingLeft: 12, paddingRight: 4, paddingVertical: 4 },
+    input: { flex: 1, backgroundColor: colors.inputBackground },
+  }), [colors]);
+
   return (
     <View style={styles.wrapper}>
-      <View style={styles.bar}>
-        <TextInput
-          placeholder={placeholder}
-          value={text}
-          onChangeText={setText}
-          style={[styles.input, { flex: 1 }]}
-          returnKeyType="done"
-          onSubmitEditing={() => {
-            const v = text.trim();
-            if (!v) return;
-            onSubmit(v);
-            setText('');
-          }}
-        />
-        <View style={{ width: 12 }} />
-        <Button
-          title="記録"
-          onPress={() => {
-            const v = text.trim();
-            if (!v) return;
-            onSubmit(v);
-            setText('');
-          }}
-        />
-      </View>
+      <Card style={styles.bar} mode="elevated">
+        <View style={styles.row}>
+          <TextInput
+            placeholder={placeholder}
+            value={text}
+            onChangeText={setText}
+            mode="outlined"
+            style={styles.input}
+            dense
+            returnKeyType="done"
+            onSubmitEditing={submit}
+          />
+          <IconButton
+            icon="send"
+            mode="contained"
+            size={22}
+            onPress={submit}
+            disabled={!text.trim()}
+          />
+        </View>
+      </Card>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrapper: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 16,
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-});
