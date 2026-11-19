@@ -1,8 +1,10 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    "types": ["jest", "node"]
   },
+  "// types": "TypeScript 6 から types の既定が空になり @types/* を自動で読まないため、使う型を明示する。",
   "// exclude": "functions/ は独自の tsconfig と依存を持つ別パッケージ。ここで巻き込むと、functions の依存が入っていない環境（CI の app ジョブ等）で型解決できず落ちる。",
   "exclude": [
     "node_modules",
