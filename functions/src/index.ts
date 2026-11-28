@@ -3,6 +3,9 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import * as admin from 'firebase-admin';
+// FieldValue は admin.firestore.FieldValue でなくサブパスから読む。
+// Functions エミュレーターは admin.firestore を bind した関数に差し替えるため、静的プロパティの FieldValue が undefined になる。
+import { FieldValue } from 'firebase-admin/firestore';
 import { randomBytes } from 'crypto';
 import { todayKeyJST, todayWeekdayJST } from './lib/date';
 import {
@@ -102,7 +105,7 @@ async function generateForHousehold(householdId: string): Promise<number> {
       userId: 'system',
       status: 'pending',
       dateKey,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       reactions: {},
     });
   });
@@ -177,7 +180,7 @@ export const deleteMyAccount = onCall({ region: 'asia-northeast1' }, async (req)
   if (householdId && householdId !== uid) {
     await ignoreNotFound(
       db.collection('households').doc(householdId)
-        .update({ members: admin.firestore.FieldValue.arrayRemove(uid) })
+        .update({ members: FieldValue.arrayRemove(uid) })
     );
   }
 
@@ -193,7 +196,7 @@ export const deleteMyAccount = onCall({ region: 'asia-northeast1' }, async (req)
     db.collection('tasks').where('completedByUserId', '==', uid).get(),
   ]);
 
-  const del = admin.firestore.FieldValue.delete();
+  const del = FieldValue.delete();
   const refByPath = new Map<string, admin.firestore.DocumentReference>();
   for (const d of [...personalSnap.docs, ...ownedSnap.docs, ...completedSnap.docs]) {
     refByPath.set(d.ref.path, d.ref);
@@ -261,12 +264,12 @@ export const createHousehold = onCall({ region: 'asia-northeast1' }, async (req)
       name,
       inviteCode,
       members: [uid],
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     t.set(userRef, { householdId: newRef.id }, { merge: true });
     // 旧世帯に残っていると、移った後も旧世帯のデータを読めてしまう
     if (prevRef && prevSnap?.exists) {
-      t.update(prevRef, { members: admin.firestore.FieldValue.arrayRemove(uid) });
+      t.update(prevRef, { members: FieldValue.arrayRemove(uid) });
     }
     return prev ?? null;
   });
@@ -349,14 +352,14 @@ export const joinByInvite = onCall({ region: 'asia-northeast1' }, async (req) =>
   // どの世帯にも属さない状態が残る。
   if (plan.addToNew) {
     await db.collection('households').doc(hid)
-      .update({ members: admin.firestore.FieldValue.arrayUnion(uid) });
+      .update({ members: FieldValue.arrayUnion(uid) });
   }
   // 旧世帯のメンバーから外す。残したままだと参加後も旧世帯のデータを読めてしまう。
   // 旧世帯が既に無い場合まで join 全体を失敗させない。
   if (plan.removeFrom) {
     await ignoreNotFound(
       db.collection('households').doc(plan.removeFrom)
-        .update({ members: admin.firestore.FieldValue.arrayRemove(uid) })
+        .update({ members: FieldValue.arrayRemove(uid) })
     );
   }
   await userRef.set({ householdId: hid }, { merge: true });
